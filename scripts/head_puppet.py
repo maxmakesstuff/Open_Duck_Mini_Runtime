@@ -12,6 +12,12 @@ NEW - record & loop your own idle:
   * Press DPAD-RIGHT        -> play the stored sequence, looped forever.
     Press DPAD-RIGHT again, or touch ANY stick / trigger / button, to stop and
     return to live control.
+  * Press DPAD-UP           -> face-tracking mode: the head tracks the nearest
+    face (picam + OpenCV Haar). After a face is held 1.5 s it greets (ear wiggle
+    + happy2.wav, then a 5 s scanner scan); on loss it wiggles goodbye. With no
+    face it replays your recorded idle. Press DPAD-UP again, or any stick, to
+    stop. Needs duck_config "camera": true; disabled cleanly if the picam/cv2
+    isn't present.
 
 The record/playback feature needs the updated xbox_controller.py + buttons.py
 (which expose DPAD left/right). If they're missing the script still runs as a

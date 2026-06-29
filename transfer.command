@@ -34,6 +34,7 @@ FILES=(
   "scripts/head_puppet.py|scripts"
   "mini_bdx_runtime/mini_bdx_runtime/xbox_controller.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/buttons.py|mini_bdx_runtime/mini_bdx_runtime"
+  "mini_bdx_runtime/mini_bdx_runtime/face_tracker.py|mini_bdx_runtime/mini_bdx_runtime"
 )
 
 echo "================================================="
@@ -98,5 +99,6 @@ echo "   ssh ${REMOTE_USER}@${REMOTE_HOST} \\"
 echo "     'cd ${REMOTE_ROOT} && \\"
 echo "      mv scripts/head_puppet.py.orig scripts/head_puppet.py && \\"
 echo "      mv mini_bdx_runtime/mini_bdx_runtime/xbox_controller.py.orig mini_bdx_runtime/mini_bdx_runtime/xbox_controller.py && \\"
-echo "      mv mini_bdx_runtime/mini_bdx_runtime/buttons.py.orig mini_bdx_runtime/mini_bdx_runtime/buttons.py'"
+echo "      mv mini_bdx_runtime/mini_bdx_runtime/buttons.py.orig mini_bdx_runtime/mini_bdx_runtime/buttons.py && \\"
+echo "      rm -f mini_bdx_runtime/mini_bdx_runtime/face_tracker.py'   # new file: just delete to revert"
 echo "================================================="
