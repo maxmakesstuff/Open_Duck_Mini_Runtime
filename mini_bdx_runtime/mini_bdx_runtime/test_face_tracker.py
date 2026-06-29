@@ -80,6 +80,43 @@ def test_servo_step_mixed_axes():
     assert abs(out[1] - 2.1) < EPS
 
 
+# ----------------------------------------------------------- presence
+def test_presence_acquire_and_greet_once():
+    p = ft.FacePresence(lost_timeout=0.4, greet_after=1.5)
+    p.update(True, 0.0)
+    assert p.present and p.just_acquired and not p.greet_ready
+    p.update(True, 1.0)
+    assert p.present and not p.greet_ready
+    p.update(True, 1.5)
+    assert p.greet_ready            # fires exactly once at 1.5 s held
+    p.update(True, 2.0)
+    assert not p.greet_ready
+
+
+def test_presence_hysteresis_rides_dropouts():
+    p = ft.FacePresence(lost_timeout=0.4, greet_after=1.5)
+    p.update(True, 0.0)
+    p.update(False, 0.2)            # dropout within timeout -> still present
+    assert p.present and not p.just_lost
+    p.update(False, 0.5)            # 0.5 s since last detection -> lost
+    assert not p.present and p.just_lost
+
+
+def test_presence_regreets_after_reacquire():
+    p = ft.FacePresence(lost_timeout=0.4, greet_after=1.5)
+    p.update(True, 0.0)
+    p.update(True, 1.5)
+    assert p.greet_ready
+    p.update(False, 2.0)            # lost (last seen 1.5)
+    assert not p.present and p.just_lost
+    p.update(True, 3.0)             # reacquire
+    assert p.just_acquired
+    p.update(True, 4.4)
+    assert not p.greet_ready        # held 1.4 < 1.5
+    p.update(True, 4.5)
+    assert p.greet_ready            # held 1.5 -> regreets
+
+
 def _run():
     tests = [v for k, v in sorted(globals().items())
              if k.startswith("test_") and callable(v)]

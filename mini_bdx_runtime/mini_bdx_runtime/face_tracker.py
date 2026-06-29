@@ -102,3 +102,52 @@ def servo_step(prev_yaw, prev_pitch, err_yaw, err_pitch,
     dyaw = 0.0 if abs(err_yaw) < deadzone else kp_yaw * err_yaw
     dpitch = 0.0 if abs(err_pitch) < deadzone else kp_pitch * err_pitch
     return (prev_yaw + dyaw, prev_pitch + dpitch)
+
+
+class FacePresence:
+    """Turn raw per-frame detections into a stable presence signal with loss
+    hysteresis (rides out dropped frames), plus acquire/lose edges and a one-shot
+    `greet_ready` pulse once a face has been held `greet_after` seconds."""
+
+    def __init__(self, lost_timeout=LOST_TIMEOUT_S, greet_after=GREET_AFTER_S):
+        self.lost_timeout = lost_timeout
+        self.greet_after = greet_after
+        self.present = False
+        self.just_acquired = False
+        self.just_lost = False
+        self.greet_ready = False
+        self.held = 0.0
+        self._last_seen = None
+        self._acquired_at = None
+        self._greeted = False
+
+    def update(self, found, now):
+        self.just_acquired = False
+        self.just_lost = False
+        self.greet_ready = False
+        if found:
+            self._last_seen = now
+
+        was_present = self.present
+        if found:
+            self.present = True
+        elif self._last_seen is not None and (now - self._last_seen) <= self.lost_timeout:
+            self.present = True       # hysteresis: hold through brief dropouts
+        else:
+            self.present = False
+
+        if self.present and not was_present:
+            self._acquired_at = now
+            self._greeted = False
+            self.just_acquired = True
+        elif not self.present and was_present:
+            self._acquired_at = None
+            self.just_lost = True
+
+        self.held = (now - self._acquired_at) if self._acquired_at is not None else 0.0
+
+        if (self.present and not self._greeted
+                and self._acquired_at is not None and self.held >= self.greet_after):
+            self._greeted = True
+            self.greet_ready = True
+        return self
