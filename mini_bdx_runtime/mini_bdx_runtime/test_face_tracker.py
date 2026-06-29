@@ -62,6 +62,24 @@ def test_select_head_source():
     assert ft.select_head_source(False, False) == "hold"
 
 
+# ----------------------------------------------------------- servo step
+def test_servo_step_deadzone_no_motion():
+    out = ft.servo_step(0.1, -0.2, 0.05, -0.03, kp_yaw=1.0, kp_pitch=1.0, deadzone=0.08)
+    assert out == (0.1, -0.2)
+
+
+def test_servo_step_moves_outside_deadzone():
+    out = ft.servo_step(0.0, 0.0, 0.5, -0.5, kp_yaw=0.1, kp_pitch=0.1, deadzone=0.08)
+    assert abs(out[0] - 0.05) < EPS and abs(out[1] + 0.05) < EPS
+
+
+def test_servo_step_mixed_axes():
+    # yaw inside deadzone (hold), pitch outside (moves)
+    out = ft.servo_step(1.0, 2.0, 0.02, 0.5, kp_yaw=0.1, kp_pitch=0.2, deadzone=0.08)
+    assert abs(out[0] - 1.0) < EPS
+    assert abs(out[1] - 2.1) < EPS
+
+
 def _run():
     tests = [v for k, v in sorted(globals().items())
              if k.startswith("test_") and callable(v)]

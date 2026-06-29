@@ -91,3 +91,14 @@ def select_head_source(face_present, has_recording):
     if face_present:
         return "servo"
     return "keyframe" if has_recording else "hold"
+
+
+def servo_step(prev_yaw, prev_pitch, err_yaw, err_pitch,
+               kp_yaw=KP_YAW, kp_pitch=KP_PITCH, deadzone=DEADZONE):
+    """Incremental proportional step toward the face (eye-in-hand closed loop:
+    the camera is on the head, so nudging toward the face shrinks next tick's
+    error). Returns the RAW (yaw, pitch) target; the caller clamps to head limits
+    and slew-limits it. No motion while an axis error is within `deadzone`."""
+    dyaw = 0.0 if abs(err_yaw) < deadzone else kp_yaw * err_yaw
+    dpitch = 0.0 if abs(err_pitch) < deadzone else kp_pitch * err_pitch
+    return (prev_yaw + dyaw, prev_pitch + dpitch)
