@@ -172,6 +172,40 @@ def test_no_farewell_if_never_greeted():
     assert out.antenna is None and out.projector is None and out.scanner is False
 
 
+def test_greet_second_tick_silent_and_wiggling():
+    # one-shot: play_sound only on entry; antenna actually wiggles on a later GREET tick
+    g = ft.GreetSequence(cute_sound="happy2.wav", wiggle_s=1.0, scan_s=5.0)
+    g.update(0.0, _pres(present=True, greet_ready=True))   # enter GREET, sound fired here
+    out2 = g.update(0.2, _pres(present=True))              # still GREET, mid-wiggle
+    assert g.state == "GREET"
+    assert out2.play_sound is None
+    assert out2.antenna is not None and abs(out2.antenna) > 0.0
+
+
+def test_farewell_from_greet():
+    g = ft.GreetSequence(wiggle_s=1.0, scan_s=5.0)
+    g.update(0.0, _pres(present=True, greet_ready=True))   # GREET
+    out = g.update(0.1, _pres(just_lost=True))             # lose the face mid-wiggle
+    assert g.state == "FAREWELL"
+    assert out.projector is False and out.scanner is False
+
+
+def test_farewell_from_scan_kills_projector_and_scanner():
+    g = ft.GreetSequence(wiggle_s=1.0, scan_s=5.0)
+    g.update(0.0, _pres(present=True, greet_ready=True))   # GREET
+    g.update(1.0, _pres(present=True))                     # -> SCAN (projector + scanner on)
+    out = g.update(2.0, _pres(just_lost=True))             # lose the face mid-scan
+    assert g.state == "FAREWELL"
+    assert out.projector is False and out.scanner is False  # LED + lamp loop forced off
+
+
+def test_update_advances_at_most_one_step():
+    g = ft.GreetSequence(wiggle_s=0.001, scan_s=0.001)     # tiny thresholds
+    out = g.update(99.0, _pres(present=True, greet_ready=True))  # huge dt
+    assert g.state == "GREET"                              # ONE transition only, not SCAN/GREETED
+    assert out.play_sound is not None
+
+
 def _run():
     tests = [v for k, v in sorted(globals().items())
              if k.startswith("test_") and callable(v)]

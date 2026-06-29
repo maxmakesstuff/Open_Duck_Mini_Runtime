@@ -226,6 +226,7 @@ class GreetSequence:
         elif self.state == "FAREWELL":
             out.antenna = self._wiggle(now)
             out.projector = False
+            out.scanner = False        # explicit: the scan lamp-loop stays off during farewell
             if now - self._t0 >= self.wiggle_s:
                 self._enter("IDLE", now)
         return out
