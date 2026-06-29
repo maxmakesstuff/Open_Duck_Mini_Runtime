@@ -39,11 +39,16 @@ from mini_bdx_runtime.eyes import Eyes
 from mini_bdx_runtime.sounds import Sounds
 from mini_bdx_runtime.antennas import Antennas
 from mini_bdx_runtime.projector import Projector
-from mini_bdx_runtime.scanner_sound import ScannerSound, PygameScannerBackend
 from mini_bdx_runtime.face_tracker import (
     FaceCamera, FacePresence, GreetSequence,
     servo_step, normalized_error, map_error_to_axes, select_head_source,
 )
+# scanner_sound ships alongside this file; if it (or its assets) somehow isn't on
+# the robot, degrade to a silent scan rather than refusing to start.
+try:
+    from mini_bdx_runtime.scanner_sound import ScannerSound, PygameScannerBackend
+except ImportError:
+    ScannerSound = PygameScannerBackend = None
 
 # ----------------------------- tunables -----------------------------
 CONTROL_HZ = 60
@@ -187,7 +192,7 @@ def main():
 
     # Scanner-sound lamp-loop for the greeting scan (reuses the X-button feature).
     scanner = None
-    if duck_config.speaker:
+    if duck_config.speaker and ScannerSound is not None:
         try:
             scanner = ScannerSound(
                 PygameScannerBackend("../mini_bdx_runtime/assets/scanner/")

@@ -1,10 +1,13 @@
 #!/bin/bash
 #
-# Push the HEAD-PUPPET update to the duck and nothing else.
-# Overwrites exactly 3 files (the walk is left untouched):
-#   scripts/head_puppet.py
-#   mini_bdx_runtime/mini_bdx_runtime/xbox_controller.py
-#   mini_bdx_runtime/mini_bdx_runtime/buttons.py
+# Push the HEAD-PUPPET + face-tracking update to the duck and nothing else.
+# Pushes these files (the walk is left untouched):
+#   scripts/head_puppet.py                                 (overwrite)
+#   mini_bdx_runtime/mini_bdx_runtime/xbox_controller.py   (overwrite)
+#   mini_bdx_runtime/mini_bdx_runtime/buttons.py           (overwrite)
+#   mini_bdx_runtime/mini_bdx_runtime/face_tracker.py      (new)
+#   mini_bdx_runtime/mini_bdx_runtime/scanner_sound.py     (new)
+#   mini_bdx_runtime/assets/scanner/lamp{,2,3}.wav         (new)
 #
 # Before overwriting, the robot's current copy of each file is backed up once
 # as <file>.orig (re-running won't clobber that first backup), so you always
@@ -35,6 +38,10 @@ FILES=(
   "mini_bdx_runtime/mini_bdx_runtime/xbox_controller.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/buttons.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/face_tracker.py|mini_bdx_runtime/mini_bdx_runtime"
+  "mini_bdx_runtime/mini_bdx_runtime/scanner_sound.py|mini_bdx_runtime/mini_bdx_runtime"
+  "mini_bdx_runtime/assets/scanner/lamp.wav|mini_bdx_runtime/assets/scanner"
+  "mini_bdx_runtime/assets/scanner/lamp2.wav|mini_bdx_runtime/assets/scanner"
+  "mini_bdx_runtime/assets/scanner/lamp3.wav|mini_bdx_runtime/assets/scanner"
 )
 
 echo "================================================="
@@ -73,15 +80,15 @@ for entry in "${FILES[@]}"; do
   echo "• ${base}"
   echo "    -> ${remote}"
 
-  if ! ssh_cmd "test -f '${remote}'"; then
-    echo "    ERROR: not found on the duck. Check that the repo is at:"
-    echo "           ${REMOTE_ROOT}"
-    exit 1
+  if ssh_cmd "test -f '${remote}'"; then
+    # existing file: back up the robot's ORIGINAL once (cp -n keeps the first .orig)
+    ssh_cmd "cp -n '${remote}' '${remote}.orig'" \
+      && echo "    backed up robot original -> ${base}.orig (or kept existing)"
+  else
+    # new file: ensure the remote dir exists; nothing to back up (revert = delete)
+    ssh_cmd "mkdir -p '${REMOTE_ROOT}/${remdir}'"
+    echo "    new file on the duck (no backup; revert = delete)"
   fi
-
-  # one-time backup of the robot's ORIGINAL (cp -n keeps the first .orig)
-  ssh_cmd "cp -n '${remote}' '${remote}.orig'" \
-    && echo "    backed up robot original -> ${base}.orig (or kept existing)"
 
   scp "${SSH_OPTS[@]}" "${LOCAL_ROOT}/${rel}" "${REMOTE_USER}@${REMOTE_HOST}:${remote}"
   echo "    transferred ✓"
@@ -100,5 +107,7 @@ echo "     'cd ${REMOTE_ROOT} && \\"
 echo "      mv scripts/head_puppet.py.orig scripts/head_puppet.py && \\"
 echo "      mv mini_bdx_runtime/mini_bdx_runtime/xbox_controller.py.orig mini_bdx_runtime/mini_bdx_runtime/xbox_controller.py && \\"
 echo "      mv mini_bdx_runtime/mini_bdx_runtime/buttons.py.orig mini_bdx_runtime/mini_bdx_runtime/buttons.py && \\"
-echo "      rm -f mini_bdx_runtime/mini_bdx_runtime/face_tracker.py'   # new file: just delete to revert"
+echo "      rm -f mini_bdx_runtime/mini_bdx_runtime/face_tracker.py && \\"
+echo "      rm -f mini_bdx_runtime/mini_bdx_runtime/scanner_sound.py && \\"
+echo "      rm -rf mini_bdx_runtime/assets/scanner'   # new files: delete to revert"
 echo "================================================="
