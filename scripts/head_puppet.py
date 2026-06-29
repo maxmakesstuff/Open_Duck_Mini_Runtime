@@ -33,6 +33,11 @@ from mini_bdx_runtime.eyes import Eyes
 from mini_bdx_runtime.sounds import Sounds
 from mini_bdx_runtime.antennas import Antennas
 from mini_bdx_runtime.projector import Projector
+from mini_bdx_runtime.scanner_sound import ScannerSound, PygameScannerBackend
+from mini_bdx_runtime.face_tracker import (
+    FaceCamera, FacePresence, GreetSequence,
+    servo_step, normalized_error, map_error_to_axes, select_head_source,
+)
 
 # ----------------------------- tunables -----------------------------
 CONTROL_HZ = 60
@@ -164,6 +169,27 @@ def main():
     eyes = Eyes() if duck_config.eyes else None
     projector = Projector() if duck_config.projector else None
 
+    # Face tracking (optional). Disabled cleanly if the picam/cv2 isn't there.
+    face_cam = None
+    if duck_config.camera:
+        try:
+            face_cam = FaceCamera()
+            print("Face tracking available — DPAD-UP to toggle.")
+        except Exception as e:  # noqa: BLE001
+            print(f"[head_puppet] face tracking unavailable: {e}")
+            face_cam = None
+
+    # Scanner-sound lamp-loop for the greeting scan (reuses the X-button feature).
+    scanner = None
+    if duck_config.speaker:
+        try:
+            scanner = ScannerSound(
+                PygameScannerBackend("../mini_bdx_runtime/assets/scanner/")
+            )
+        except Exception as e:  # noqa: BLE001
+            print(f"[head_puppet] scanner sound unavailable: {e}")
+            scanner = None
+
     hwi = HWI(duck_config)
     hwi.set_kps([8] * 14)
     hwi.set_kds([0] * 14)
@@ -177,6 +203,10 @@ def main():
     playback_idx = 0
     playback_armed = False
     warned_no_feature = False
+    presence = FacePresence()
+    greet = GreetSequence()
+    tracking_armed = False
+    last_face = None                   # last real (cx, cy, w, h) while a face is held
 
     print("Head puppet ready. Hold DPAD-LEFT 3s to record, DPAD-RIGHT to play.")
 
@@ -188,7 +218,24 @@ def main():
             )
             dl = getattr(buttons, "dpad_left", None)
             dr = getattr(buttons, "dpad_right", None)
+            du = getattr(buttons, "dpad_up", None)
             feature_on = dl is not None and dr is not None
+
+            # DPAD-UP toggles face tracking from LIVE or PLAYBACK.
+            if du is not None and du.triggered and state in ("LIVE", "PLAYBACK"):
+                if face_cam is not None:
+                    state = "TRACKING"
+                    presence = FacePresence()
+                    greet = GreetSequence()
+                    playback_idx = 0
+                    tracking_armed = False
+                    last_face = None
+                    print("◉ FACE TRACKING — DPAD-UP or any stick to stop")
+                    time.sleep(DT)
+                    continue
+                else:
+                    print("(face tracking unavailable — set duck_config camera "
+                          "+ connect the picam)")
             if not feature_on and not warned_no_feature:
                 print("[head_puppet] DPAD left/right unavailable "
                       "(old xbox_controller?) - record/playback disabled.")
@@ -219,6 +266,96 @@ def main():
                         continue
                     else:
                         print("(nothing recorded yet - hold DPAD-LEFT 3s first)")
+
+            # ---- TRACKING ----
+            if state == "TRACKING":
+                # exit on UP again, or on any stick/trigger once we've gone idle
+                active = any_active_input(
+                    last_commands, buttons, left_trigger, right_trigger
+                )
+                if not active:
+                    tracking_armed = True
+                up_toggle = du is not None and du.triggered
+                if up_toggle or (tracking_armed and active):
+                    if scanner is not None:
+                        scanner.stop()
+                    if projector is not None and projector.on:
+                        projector.switch()
+                    if antennas is not None:
+                        antennas.set_position_left(0)
+                        antennas.set_position_right(0)
+                    state = "LIVE"
+                    print("■ tracking stopped")
+                    time.sleep(DT)
+                    continue
+
+                found, cx, cy, img_w, img_h, _t = face_cam.latest()
+                presence.update(found, now)
+                if found:
+                    last_face = (cx, cy, img_w, img_h)
+
+                src = select_head_source(presence.present, bool(recording))
+
+                # fetch the next idle keyframe only when we're using it
+                keyframe = None
+                if src == "keyframe":
+                    keyframe = recording[playback_idx]
+                    playback_idx = (playback_idx + 1) % len(recording)
+
+                g = greet.update(now, presence)
+
+                # ---- head target ----
+                if src == "servo" and last_face is not None:
+                    fx, fy, fw, fh = last_face
+                    ex, ey = normalized_error(fx, fy, fw, fh)
+                    err_yaw, err_pitch = map_error_to_axes(ex, ey)
+                    raw_yaw, raw_pitch = servo_step(
+                        prev_head[0], prev_head[2], err_yaw, err_pitch
+                    )
+                    target = list(clamp_head_rad((raw_yaw, 0.0, raw_pitch)))
+                elif src == "keyframe":
+                    target = list(clamp_head_rad(keyframe["head"]))
+                else:  # hold (servo with no face seen yet, or no recording)
+                    target = list(clamp_head_rad((prev_head[0], 0.0, prev_head[2])))
+                prev_head = slew_list(prev_head, target, MAX_HEAD_DELTA)
+                hwi.set_position("head_yaw", prev_head[0])
+                hwi.set_position("head_roll", prev_head[1])
+                hwi.set_position("head_pitch", prev_head[2])
+
+                # ---- antennas: greet wiggle wins; else the idle keyframe ----
+                if g.antenna is not None and antennas is not None:
+                    antennas.set_position_left(clamp(g.antenna, -1.0, 1.0))
+                    antennas.set_position_right(clamp(g.antenna, -1.0, 1.0))
+                elif keyframe is not None and antennas is not None:
+                    al, ar = keyframe["ant"]
+                    antennas.set_position_left(clamp(al, -1.0, 1.0))
+                    antennas.set_position_right(clamp(ar, -1.0, 1.0))
+
+                # ---- sound: greet one-shot; else the idle keyframe's sound ----
+                if g.play_sound and sounds is not None:
+                    sounds.play(g.play_sound)
+                elif keyframe is not None and keyframe["sound"] and sounds is not None:
+                    sounds.play(keyframe["sound"])
+
+                # ---- projector: greet/scan wins; else the idle keyframe's state ----
+                if g.projector is not None and projector is not None:
+                    if g.projector != projector.on:
+                        projector.switch()
+                elif (keyframe is not None and keyframe["proj"] is not None
+                        and projector is not None):
+                    if keyframe["proj"] != projector.on:
+                        projector.switch()
+
+                # ---- scanner lamp-loop during the scan ----
+                if scanner is not None:
+                    if g.scanner and not scanner.is_active:
+                        scanner.start(now)
+                    elif not g.scanner and scanner.is_active:
+                        scanner.stop()
+                    scanner.update(now)
+
+                time.sleep(DT)
+                continue
 
             # ---- PLAYBACK ----
             if state == "PLAYBACK":
@@ -311,6 +448,10 @@ def main():
             eyes.stop()
         if projector is not None:
             projector.stop()
+        if scanner is not None:
+            scanner.stop()
+        if face_cam is not None:
+            face_cam.stop()
         print("head puppet off")
 
 

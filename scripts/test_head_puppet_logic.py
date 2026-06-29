@@ -35,6 +35,15 @@ def _install_fakes():
         m = types.ModuleType(f"mini_bdx_runtime.{name}")
         setattr(m, attr, _D)
         sys.modules[f"mini_bdx_runtime.{name}"] = m
+    _ft = types.ModuleType("mini_bdx_runtime.face_tracker")
+    for _n in ("FaceCamera", "FacePresence", "GreetSequence", "servo_step",
+               "normalized_error", "map_error_to_axes", "select_head_source"):
+        setattr(_ft, _n, _D)
+    sys.modules["mini_bdx_runtime.face_tracker"] = _ft
+    _ss = types.ModuleType("mini_bdx_runtime.scanner_sound")
+    for _n in ("ScannerSound", "PygameScannerBackend"):
+        setattr(_ss, _n, _D)
+    sys.modules["mini_bdx_runtime.scanner_sound"] = _ss
 
 
 _install_fakes()
