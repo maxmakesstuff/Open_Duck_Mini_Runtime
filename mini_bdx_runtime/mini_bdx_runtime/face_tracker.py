@@ -230,3 +230,78 @@ class GreetSequence:
             if now - self._t0 >= self.wiggle_s:
                 self._enter("IDLE", now)
         return out
+
+
+class FaceCamera:
+    """Captures low-res frames from the picam and runs the bundled OpenCV Haar
+    face detector on a daemon thread (~DETECT_FPS), publishing only the nearest
+    face. Decoupled from the 60 Hz control loop: head_puppet just calls latest().
+
+    Lazy-imports cv2/picamzero so the rest of this module imports off-robot.
+    Raises from __init__ on any failure -> head_puppet disables the feature."""
+
+    def __init__(self, cap_w=CAP_W, cap_h=CAP_H, detect_fps=DETECT_FPS):
+        import cv2
+        from picamzero import Camera
+
+        self._cv2 = cv2
+        cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        self._cascade = cv2.CascadeClassifier(cascade_path)
+        if self._cascade.empty():
+            raise RuntimeError(f"failed to load Haar cascade at {cascade_path}")
+
+        self._cam = Camera()
+        self._cap_w = cap_w
+        self._cap_h = cap_h
+        self._period = 1.0 / float(detect_fps)
+
+        # default published frame size matches the rotated detection frame below
+        self._lock = threading.Lock()
+        self._latest = (False, 0.0, 0.0, cap_h, cap_w, 0.0)
+        self._running = True
+        self._thread = threading.Thread(target=self._worker, daemon=True)
+        self._thread.start()
+
+    def _worker(self):
+        cv2 = self._cv2
+        while self._running:
+            t = time.time()
+            try:
+                frame = self._cam.capture_array()
+                # downscale first (cheap), then rotate 90 CW so faces are upright
+                # for the frontal Haar cascade (matches camera.py's mounting fix).
+                small = cv2.resize(frame, (self._cap_w, self._cap_h))
+                small = cv2.rotate(small, cv2.ROTATE_90_CLOCKWISE)
+                gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+                h, w = gray.shape[:2]
+                faces = self._cascade.detectMultiScale(
+                    gray,
+                    scaleFactor=HAAR_SCALE_FACTOR,
+                    minNeighbors=HAAR_MIN_NEIGHBORS,
+                    minSize=HAAR_MIN_SIZE,
+                )
+                face = largest_face([tuple(f) for f in faces])
+                if face is not None:
+                    cx, cy = face_center(face)
+                    if DEBUG:
+                        print(f"[face] center=({cx:.0f},{cy:.0f}) frame=({w}x{h})")
+                    with self._lock:
+                        self._latest = (True, cx, cy, w, h, t)
+                else:
+                    with self._lock:
+                        self._latest = (False, 0.0, 0.0, w, h, t)
+            except Exception as e:  # noqa: BLE001 - never let the thread die
+                if DEBUG:
+                    print(f"[face] detect error: {type(e).__name__}: {e}")
+            dt = self._period - (time.time() - t)
+            if dt > 0:
+                time.sleep(dt)
+
+    def latest(self):
+        with self._lock:
+            return self._latest
+
+    def stop(self):
+        self._running = False
+        if self._thread.is_alive():
+            self._thread.join(timeout=1.0)
