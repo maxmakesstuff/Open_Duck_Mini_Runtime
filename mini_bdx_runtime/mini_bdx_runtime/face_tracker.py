@@ -51,6 +51,14 @@ CUTE_SOUND = "happy2.wav"
 
 DEBUG = True         # print each detection's face center (handy for axis tuning)
 
+# picamzero -> picamera2 -> libcamera. On Raspberry Pi OS, libcamera is a system
+# apt package (a compiled binding) under this dir; a venv built WITHOUT
+# --system-site-packages can't import it. FaceCamera appends this to sys.path so
+# the import resolves (append => the venv's own packages keep priority; only the
+# system-only libcamera/picamera2 fall through). Assumes the venv and system share
+# a Python minor version (true for this Pi). Set to "" to disable.
+SYSTEM_DIST_PACKAGES = "/usr/lib/python3/dist-packages"
+
 
 # ----------------------------- pure geometry -----------------------------
 def largest_face(faces):
@@ -241,6 +249,11 @@ class FaceCamera:
     Raises from __init__ on any failure -> head_puppet disables the feature."""
 
     def __init__(self, cap_w=CAP_W, cap_h=CAP_H, detect_fps=DETECT_FPS):
+        # Make the system-only libcamera/picamera2 importable from inside the venv
+        # (see SYSTEM_DIST_PACKAGES). Must run before importing picamzero.
+        import sys
+        if SYSTEM_DIST_PACKAGES and SYSTEM_DIST_PACKAGES not in sys.path:
+            sys.path.append(SYSTEM_DIST_PACKAGES)
         import cv2
         from picamzero import Camera
 
