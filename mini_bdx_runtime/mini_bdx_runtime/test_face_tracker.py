@@ -117,6 +117,61 @@ def test_presence_regreets_after_reacquire():
     assert p.greet_ready            # held 1.5 -> regreets
 
 
+# ----------------------------------------------------------- greet timeline
+def _pres(present=False, greet_ready=False, just_lost=False,
+          just_acquired=False, held=0.0):
+    return SimpleNamespace(present=present, greet_ready=greet_ready,
+                           just_lost=just_lost, just_acquired=just_acquired, held=held)
+
+
+def test_greet_starts_on_greet_ready():
+    g = ft.GreetSequence(cute_sound="happy2.wav", wiggle_s=1.0, scan_s=5.0)
+    out = g.update(0.0, _pres(present=True, greet_ready=True))
+    assert g.state == "GREET"
+    assert out.play_sound == "happy2.wav"
+    assert out.antenna is not None
+
+
+def test_greet_to_scan_after_wiggle():
+    g = ft.GreetSequence(wiggle_s=1.0, scan_s=5.0)
+    g.update(0.0, _pres(present=True, greet_ready=True))
+    out = g.update(1.0, _pres(present=True))
+    assert g.state == "SCAN"
+    assert out.projector is True and out.scanner is True
+
+
+def test_scan_runs_then_ends():
+    g = ft.GreetSequence(wiggle_s=1.0, scan_s=5.0)
+    g.update(0.0, _pres(present=True, greet_ready=True))
+    g.update(1.0, _pres(present=True))           # enter SCAN at t=1.0
+    mid = g.update(3.0, _pres(present=True))
+    assert g.state == "SCAN" and mid.projector is True and mid.scanner is True
+    end = g.update(6.0, _pres(present=True))     # 5 s after scan start
+    assert g.state == "GREETED"
+    assert end.projector is False and end.scanner is False
+
+
+def test_farewell_on_loss_after_greeting():
+    g = ft.GreetSequence(wiggle_s=1.0, scan_s=5.0)
+    g.update(0.0, _pres(present=True, greet_ready=True))
+    g.update(1.0, _pres(present=True))
+    g.update(6.0, _pres(present=True))           # GREETED
+    out = g.update(7.0, _pres(just_lost=True))   # lost -> abort to FAREWELL
+    assert g.state == "FAREWELL"
+    assert out.projector is False and out.scanner is False
+    out2 = g.update(7.5, _pres())
+    assert g.state == "FAREWELL" and out2.antenna is not None
+    g.update(8.0, _pres())                       # wiggle_s after farewell start
+    assert g.state == "IDLE"
+
+
+def test_no_farewell_if_never_greeted():
+    g = ft.GreetSequence(wiggle_s=1.0, scan_s=5.0)
+    out = g.update(0.0, _pres(just_lost=True))
+    assert g.state == "IDLE"
+    assert out.antenna is None and out.projector is None and out.scanner is False
+
+
 def _run():
     tests = [v for k, v in sorted(globals().items())
              if k.startswith("test_") and callable(v)]

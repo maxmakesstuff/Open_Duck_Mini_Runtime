@@ -151,3 +151,81 @@ class FacePresence:
             self._greeted = True
             self.greet_ready = True
         return self
+
+
+class GreetOutput:
+    """What the greeting timeline wants this tick. None = 'don't touch that
+    channel' (the caller's keyframe playback owns it instead)."""
+    __slots__ = ("antenna", "play_sound", "projector", "scanner")
+
+    def __init__(self):
+        self.antenna = None       # ear-wiggle value in [-1, 1], or None
+        self.play_sound = None    # one-shot filename, or None
+        self.projector = None     # desired LED state, or None
+        self.scanner = False      # run the ScannerSound lamp-loop?
+
+
+class GreetSequence:
+    """Non-blocking greeting, advanced one tick per update():
+
+        IDLE --greet_ready--> GREET (cute sound + ear wiggle)
+        GREET --WIGGLE_S--> SCAN (projector LED + scanner lamp-loop)
+        SCAN --SCAN_S--> GREETED (just keep tracking)
+        {GREET,SCAN,GREETED} --face lost--> FAREWELL (one ear wiggle) --WIGGLE_S--> IDLE
+
+    Losing the face from IDLE (i.e. before we ever greeted) does nothing."""
+
+    def __init__(self, cute_sound=CUTE_SOUND, scan_s=SCAN_S, wiggle_s=WIGGLE_S,
+                 wiggle_amp=WIGGLE_AMP, wiggle_hz=WIGGLE_HZ):
+        self.state = "IDLE"
+        self.cute_sound = cute_sound
+        self.scan_s = scan_s
+        self.wiggle_s = wiggle_s
+        self.wiggle_amp = wiggle_amp
+        self.wiggle_hz = wiggle_hz
+        self._t0 = 0.0
+
+    def _enter(self, state, now):
+        self.state = state
+        self._t0 = now
+
+    def _wiggle(self, now):
+        phase = (now - self._t0) * self.wiggle_hz * 2.0 * math.pi
+        return self.wiggle_amp * math.sin(phase)
+
+    def update(self, now, presence):
+        out = GreetOutput()
+
+        # Lose the face after greeting -> abort straight to farewell, kill the scan.
+        if presence.just_lost and self.state in ("GREET", "SCAN", "GREETED"):
+            self._enter("FAREWELL", now)
+            out.projector = False
+            out.scanner = False
+            return out
+
+        if self.state == "IDLE":
+            if presence.greet_ready:
+                self._enter("GREET", now)
+                out.play_sound = self.cute_sound
+                out.antenna = self._wiggle(now)
+        elif self.state == "GREET":
+            out.antenna = self._wiggle(now)
+            if now - self._t0 >= self.wiggle_s:
+                self._enter("SCAN", now)
+                out.projector = True
+                out.scanner = True
+        elif self.state == "SCAN":
+            out.projector = True
+            out.scanner = True
+            if now - self._t0 >= self.scan_s:
+                self._enter("GREETED", now)
+                out.projector = False
+                out.scanner = False
+        elif self.state == "GREETED":
+            pass
+        elif self.state == "FAREWELL":
+            out.antenna = self._wiggle(now)
+            out.projector = False
+            if now - self._t0 >= self.wiggle_s:
+                self._enter("IDLE", now)
+        return out
