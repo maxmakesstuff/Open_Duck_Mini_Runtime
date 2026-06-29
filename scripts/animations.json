@@ -1,0 +1,113 @@
+{
+  "dpad": {
+    "up": "nod_yes",
+    "down": "shake_no",
+    "left": "look_around",
+    "right": "happy_dance"
+  },
+  "animations": {
+    "nod_yes": {
+      "loop": false,
+      "head": [
+        { "t": 0.0,  "head_pitch": 0.0 },
+        { "t": 0.35, "head_pitch": -0.4 },
+        { "t": 0.70, "head_pitch": -0.1 },
+        { "t": 1.05, "head_pitch": -0.4 },
+        { "t": 1.40, "head_pitch": 0.0 }
+      ],
+      "antennas": [
+        { "t": 0.0,  "left": 0.0, "right": 0.0 },
+        { "t": 0.35, "left": 0.6, "right": 0.6 },
+        { "t": 1.05, "left": 0.6, "right": 0.6 },
+        { "t": 1.40, "left": 0.0, "right": 0.0 }
+      ],
+      "sounds": [
+        { "t": 0.0, "name": "happy1.wav" }
+      ],
+      "lamp": [
+        { "t": 0.0,  "state": true },
+        { "t": 1.40, "state": false }
+      ]
+    },
+
+    "shake_no": {
+      "loop": false,
+      "head": [
+        { "t": 0.0,  "head_yaw": 0.0 },
+        { "t": 0.40, "head_yaw": -0.4 },
+        { "t": 0.90, "head_yaw": 0.4 },
+        { "t": 1.40, "head_yaw": -0.4 },
+        { "t": 1.80, "head_yaw": 0.0 }
+      ],
+      "antennas": [
+        { "t": 0.0,  "left": 0.0,  "right": 0.0 },
+        { "t": 0.40, "left": -0.5, "right": -0.5 },
+        { "t": 1.40, "left": -0.5, "right": -0.5 },
+        { "t": 1.80, "left": 0.0,  "right": 0.0 }
+      ],
+      "sounds": [
+        { "t": 0.0, "name": "beep2.wav" }
+      ],
+      "lamp": []
+    },
+
+    "look_around": {
+      "loop": false,
+      "head": [
+        { "t": 0.0,  "neck_pitch": 0.0, "head_yaw": 0.0,  "head_roll": 0.0 },
+        { "t": 0.80, "neck_pitch": 0.2, "head_yaw": 0.4,  "head_roll": 0.15 },
+        { "t": 1.80, "neck_pitch": 0.1, "head_yaw": -0.4, "head_roll": -0.15 },
+        { "t": 2.60, "neck_pitch": 0.0, "head_yaw": 0.0,  "head_roll": 0.0 }
+      ],
+      "antennas": [
+        { "t": 0.0,  "left": 0.0,  "right": 0.0 },
+        { "t": 0.80, "left": 0.5,  "right": -0.3 },
+        { "t": 1.80, "left": -0.3, "right": 0.5 },
+        { "t": 2.60, "left": 0.0,  "right": 0.0 }
+      ],
+      "sounds": [
+        { "t": 0.0, "name": "motor.wav" }
+      ],
+      "lamp": [
+        { "t": 0.0,  "state": true },
+        { "t": 2.60, "state": false }
+      ]
+    },
+
+    "happy_dance": {
+      "loop": false,
+      "head": [
+        { "t": 0.0,  "head_pitch": 0.0,  "head_roll": 0.0 },
+        { "t": 0.30, "head_pitch": 0.25, "head_roll": 0.3 },
+        { "t": 0.60, "head_pitch": -0.2, "head_roll": -0.3 },
+        { "t": 0.90, "head_pitch": 0.25, "head_roll": 0.3 },
+        { "t": 1.20, "head_pitch": -0.2, "head_roll": -0.3 },
+        { "t": 1.50, "head_pitch": 0.15, "head_roll": 0.15 },
+        { "t": 1.80, "head_pitch": 0.0,  "head_roll": 0.0 }
+      ],
+      "antennas": [
+        { "t": 0.0,  "left": 0.0,  "right": 0.0 },
+        { "t": 0.20, "left": 0.8,  "right": -0.8 },
+        { "t": 0.40, "left": -0.8, "right": 0.8 },
+        { "t": 0.60, "left": 0.8,  "right": -0.8 },
+        { "t": 0.80, "left": -0.8, "right": 0.8 },
+        { "t": 1.00, "left": 0.8,  "right": -0.8 },
+        { "t": 1.20, "left": -0.8, "right": 0.8 },
+        { "t": 1.40, "left": 0.8,  "right": -0.8 },
+        { "t": 1.80, "left": 0.0,  "right": 0.0 }
+      ],
+      "sounds": [
+        { "t": 0.0, "name": "happy2.wav" },
+        { "t": 1.2, "name": "happy3.wav" }
+      ],
+      "lamp": [
+        { "t": 0.0,  "state": true },
+        { "t": 0.4,  "state": false },
+        { "t": 0.8,  "state": true },
+        { "t": 1.2,  "state": false },
+        { "t": 1.6,  "state": true },
+        { "t": 2.0,  "state": false }
+      ]
+    }
+  }
+}

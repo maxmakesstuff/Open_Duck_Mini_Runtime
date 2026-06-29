@@ -16,39 +16,6 @@ HEAD_PITCH_RANGE = [-0.78, 0.3]
 HEAD_YAW_RANGE = [-0.5, 0.5]
 HEAD_ROLL_RANGE = [-0.5, 0.5]
 
-# D-pad axis indices used by the axes-fallback (Linux often exposes the d-pad
-# as ABS_HAT0X / ABS_HAT0Y, which pygame may present as axes rather than a hat).
-DPAD_AXIS_X = 6
-DPAD_AXIS_Y = 7
-DPAD_AXIS_THRESHOLD = 0.5
-
-
-def decode_dpad(hat, axes):
-    """Return the d-pad state as (dx, dy) in {-1, 0, 1}, hat convention
-    (right = +1, up = +1).
-
-    Many Xbox controllers report the d-pad as a hat, but several recent ones
-    (especially over Bluetooth on Linux) report a *phantom* hat and put the
-    d-pad on axes 6/7 instead. We read the hat first and, only if it carries
-    nothing, fall back to those axes. `hat` may be None; `axes` may be None or
-    a list of axis values.
-    """
-    dx = dy = 0
-    if hat is not None and len(hat) >= 2:
-        dx, dy = int(hat[0]), int(hat[1])
-    if dx == 0 and dy == 0 and axes is not None and len(axes) > DPAD_AXIS_Y:
-        ax = axes[DPAD_AXIS_X]
-        ay = axes[DPAD_AXIS_Y]
-        if ax <= -DPAD_AXIS_THRESHOLD:
-            dx = -1
-        elif ax >= DPAD_AXIS_THRESHOLD:
-            dx = 1
-        if ay <= -DPAD_AXIS_THRESHOLD:
-            dy = 1   # axis "up" is negative -> d-pad up is +1
-        elif ay >= DPAD_AXIS_THRESHOLD:
-            dy = -1
-    return dx, dy
-
 
 class XBoxController:
     def __init__(self, command_freq, only_head_control=False):
@@ -62,11 +29,7 @@ class XBoxController:
         pygame.init()
         self.p1 = pygame.joystick.Joystick(0)
         self.p1.init()
-        print(
-            f"Loaded joystick '{self.p1.get_name()}' | "
-            f"axes={self.p1.get_numaxes()} buttons={self.p1.get_numbuttons()} "
-            f"hats={self.p1.get_numhats()}"
-        )
+        print(f"Loaded joystick with {self.p1.get_numaxes()} axes.")
         self.cmd_queue = Queue(maxsize=1)
 
         self.A_pressed = False
@@ -189,11 +152,7 @@ class XBoxController:
             #     if self.p1.get_button(i):
             #         print(f"Button {i} pressed")
 
-        # Read the d-pad robustly: hat if present, else axes 6/7 (some recent
-        # Xbox BT pads on Linux expose the d-pad there instead of on a hat).
-        hat = self.p1.get_hat(0) if self.p1.get_numhats() > 0 else None
-        axes = [self.p1.get_axis(i) for i in range(self.p1.get_numaxes())]
-        left_right, up_down = decode_dpad(hat, axes)
+        up_down = self.p1.get_hat(0)[1]
         pygame.event.pump()  # process event queue
 
         return (
@@ -207,7 +166,6 @@ class XBoxController:
             left_trigger,
             right_trigger,
             up_down,
-            left_right,
         )
 
     def get_last_command(self):
@@ -218,7 +176,6 @@ class XBoxController:
         LB_pressed = False
         RB_pressed = False
         up_down = 0
-        left_right = 0
         try:
             (
                 self.last_commands,
@@ -231,7 +188,6 @@ class XBoxController:
                 self.last_left_trigger,
                 self.last_right_trigger,
                 up_down,
-                left_right,
             ) = self.cmd_queue.get(
                 False
             )  # non blocking
@@ -247,8 +203,6 @@ class XBoxController:
             RB_pressed,
             up_down == 1,
             up_down == -1,
-            left_right == -1,
-            left_right == 1,
         )
 
         return (
