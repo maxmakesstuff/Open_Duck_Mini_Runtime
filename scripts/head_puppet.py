@@ -218,6 +218,8 @@ def main():
     greet = GreetSequence()
     tracking_armed = False
     last_face = None                   # last real (cx, cy, w, h) while a face is held
+    servo_target = None                # de-windup: head target advanced once per camera frame
+    last_servo_t = None                # timestamp of the last face frame the servo consumed
 
     print("Head puppet ready. Hold DPAD-LEFT 3s to record, DPAD-RIGHT to play.")
 
@@ -241,6 +243,8 @@ def main():
                     playback_idx = 0
                     tracking_armed = False
                     last_face = None
+                    servo_target = None
+                    last_servo_t = None
                     print("◉ FACE TRACKING — DPAD-UP or any stick to stop")
                     time.sleep(DT)
                     continue
@@ -317,16 +321,30 @@ def main():
 
                 # ---- head target ----
                 if src == "servo" and last_face is not None:
-                    fx, fy, fw, fh = last_face
-                    ex, ey = normalized_error(fx, fy, fw, fh)
-                    err_yaw, err_pitch = map_error_to_axes(ex, ey)
-                    raw_yaw, raw_pitch = servo_step(
-                        prev_head[0], prev_head[2], err_yaw, err_pitch
-                    )
-                    target = list(clamp_head_rad((raw_yaw, 0.0, raw_pitch)))
+                    # Advance the visual servo ONCE PER CAMERA FRAME, not every
+                    # 60 Hz tick. The face position only refreshes at the camera
+                    # rate (DETECT_FPS); integrating it every tick over-applies the
+                    # gain and drives a limit-cycle oscillation (the head "shakes").
+                    # Between frames we hold the target and just slew toward it.
+                    if _t != last_servo_t:
+                        last_servo_t = _t
+                        fx, fy, fw, fh = last_face
+                        ex, ey = normalized_error(fx, fy, fw, fh)
+                        err_yaw, err_pitch = map_error_to_axes(ex, ey)
+                        raw_yaw, raw_pitch = servo_step(
+                            prev_head[0], prev_head[2], err_yaw, err_pitch
+                        )
+                        servo_target = list(clamp_head_rad((raw_yaw, 0.0, raw_pitch)))
+                    if servo_target is None:        # first tick before any frame seen
+                        servo_target = list(clamp_head_rad((prev_head[0], 0.0, prev_head[2])))
+                    target = servo_target
                 elif src == "keyframe":
+                    servo_target = None
+                    last_servo_t = None
                     target = list(clamp_head_rad(keyframe["head"]))
                 else:  # hold (servo with no face seen yet, or no recording)
+                    servo_target = None
+                    last_servo_t = None
                     target = list(clamp_head_rad((prev_head[0], 0.0, prev_head[2])))
                 prev_head = slew_list(prev_head, target, MAX_HEAD_DELTA)
                 hwi.set_position("head_yaw", prev_head[0])

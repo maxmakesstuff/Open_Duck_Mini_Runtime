@@ -19,7 +19,7 @@ import time
 # ---- capture / detection (tune on-robot if FPS is low) ----
 CAP_W = 320
 CAP_H = 240
-DETECT_FPS = 15           # picamera2 video streams ~30 FPS; 15 is plenty + saves CPU
+DETECT_FPS = 30           # picamera2 video streams ~30 FPS; more feedback = smoother servo
 HAAR_SCALE_FACTOR = 1.2
 HAAR_MIN_NEIGHBORS = 5
 HAAR_MIN_SIZE = (40, 40)
@@ -48,8 +48,8 @@ PITCH_FROM = "y"
 PITCH_SIGN = -1.0
 
 # ---- servo control ----
-KP_YAW = 0.06        # rad nudged toward the face per tick, per unit normalized error
-KP_PITCH = 0.05
+KP_YAW = 0.04        # rad toward the face per CAMERA FRAME, per unit error (de-wound servo)
+KP_PITCH = 0.04
 DEADZONE = 0.08      # normalized; no motion while the face is this near center
 
 # ---- greeting timeline ----
