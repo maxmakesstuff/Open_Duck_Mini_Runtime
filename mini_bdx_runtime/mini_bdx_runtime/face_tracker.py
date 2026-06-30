@@ -19,10 +19,22 @@ import time
 # ---- capture / detection (tune on-robot if FPS is low) ----
 CAP_W = 320
 CAP_H = 240
-DETECT_FPS = 10
+DETECT_FPS = 15           # picamera2 video streams ~30 FPS; 15 is plenty + saves CPU
 HAAR_SCALE_FACTOR = 1.2
 HAAR_MIN_NEIGHBORS = 5
 HAAR_MIN_SIZE = (40, 40)
+
+# Detection-frame rotation (the picam is mounted on its side). "90_CW" is verified
+# to detect faces on this robot. If detection, or the up/down vs left/right axes,
+# look wrong, try "90_CCW" / "180" / "none". Resolved to a cv2 code inside
+# FaceCamera so this module still imports without cv2.
+ROTATION = "90_CW"
+_ROTATION_NAMES = {
+    "none": None,
+    "90_CW": "ROTATE_90_CLOCKWISE",
+    "90_CCW": "ROTATE_90_COUNTERCLOCKWISE",
+    "180": "ROTATE_180",
+}
 
 # ---- image-axis -> head-axis mapping ----
 # camera.py rotates the frame 90 deg CW, i.e. the picam is mounted sideways. The
@@ -245,32 +257,48 @@ class FaceCamera:
     face detector on a daemon thread (~DETECT_FPS), publishing only the nearest
     face. Decoupled from the 60 Hz control loop: head_puppet just calls latest().
 
-    Lazy-imports cv2/picamzero so the rest of this module imports off-robot.
+    Lazy-imports cv2/picamera2 so the rest of this module imports off-robot.
     Raises from __init__ on any failure -> head_puppet disables the feature."""
 
     def __init__(self, cap_w=CAP_W, cap_h=CAP_H, detect_fps=DETECT_FPS):
-        # Make the system-only libcamera/picamera2 importable from inside the venv
-        # (see SYSTEM_DIST_PACKAGES). Must run before importing picamzero.
+        # libcamera/picamera2 are system apt packages (compiled bindings) the venv
+        # can't import on its own; make them importable (see SYSTEM_DIST_PACKAGES).
         import sys
         if SYSTEM_DIST_PACKAGES and SYSTEM_DIST_PACKAGES not in sys.path:
             sys.path.append(SYSTEM_DIST_PACKAGES)
         import cv2
-        from picamzero import Camera
+        from picamera2 import Picamera2
 
         self._cv2 = cv2
+        _rot = _ROTATION_NAMES[ROTATION]
+        self._rotate_code = None if _rot is None else getattr(cv2, _rot)
+
         cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         self._cascade = cv2.CascadeClassifier(cascade_path)
         if self._cascade.empty():
             raise RuntimeError(f"failed to load Haar cascade at {cascade_path}")
 
-        self._cam = Camera()
+        # A low-res VIDEO stream runs ~30 FPS; a still capture (picamzero) is ~2 FPS
+        # -- far too slow to servo a head in a closed loop. The stream is already
+        # cap_w x cap_h, so no resize is needed before rotate/detect.
+        self._cam = Picamera2()
+        cfg = self._cam.create_video_configuration(
+            main={"size": (cap_w, cap_h), "format": "RGB888"}
+        )
+        self._cam.configure(cfg)
+        self._cam.start()
+
         self._cap_w = cap_w
         self._cap_h = cap_h
         self._period = 1.0 / float(detect_fps)
 
-        # default published frame size matches the rotated detection frame below
+        # published frame size = the rotated detection frame (a 90deg rotate swaps w/h)
+        if self._rotate_code in (cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE):
+            init_w, init_h = cap_h, cap_w
+        else:
+            init_w, init_h = cap_w, cap_h
         self._lock = threading.Lock()
-        self._latest = (False, 0.0, 0.0, cap_h, cap_w, 0.0)
+        self._latest = (False, 0.0, 0.0, init_w, init_h, 0.0)
         self._running = True
         self._thread = threading.Thread(target=self._worker, daemon=True)
         self._thread.start()
@@ -280,12 +308,10 @@ class FaceCamera:
         while self._running:
             t = time.time()
             try:
-                frame = self._cam.capture_array()
-                # downscale first (cheap), then rotate 90 CW so faces are upright
-                # for the frontal Haar cascade (matches camera.py's mounting fix).
-                small = cv2.resize(frame, (self._cap_w, self._cap_h))
-                small = cv2.rotate(small, cv2.ROTATE_90_CLOCKWISE)
-                gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+                frame = self._cam.capture_array()          # already cap_w x cap_h
+                if self._rotate_code is not None:
+                    frame = cv2.rotate(frame, self._rotate_code)
+                gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
                 h, w = gray.shape[:2]
                 faces = self._cascade.detectMultiScale(
                     gray,
@@ -318,3 +344,8 @@ class FaceCamera:
         self._running = False
         if self._thread.is_alive():
             self._thread.join(timeout=1.0)
+        try:
+            self._cam.stop()
+            self._cam.close()
+        except Exception:
+            pass
