@@ -252,6 +252,101 @@ class GreetSequence:
         return out
 
 
+# ---- communicative "chatter" while steadily tracking a face ----
+# Curated set of short, emotive sounds that read as droid speech (NOT the lamp
+# scanner loop). head_puppet intersects this with the sounds actually present.
+CHATTER_SOUNDS = ("happy1.wav", "happy2.wav", "happy3.wav", "beep1.wav", "beep2.wav")
+CHATTER_SOUND_EVERY = (4.0, 9.0)     # seconds between random sounds (uniform)
+CHATTER_WIGGLE_EVERY = (6.0, 12.0)   # seconds between ear wiggles
+CHATTER_WIGGLE_S = 0.8
+CHATTER_WIGGLE_AMP = 0.5
+CHATTER_WIGGLE_HZ = 2.5
+
+
+class ChatterOutput:
+    """What the chatter wants this tick. None = leave that channel to the caller."""
+    __slots__ = ("play_sound", "antenna")
+
+    def __init__(self):
+        self.play_sound = None    # one-shot filename, or None
+        self.antenna = None       # ear-wiggle value in [-1, 1], or None
+
+
+class TrackingChatter:
+    """Makes being tracked feel alive: once we're steadily following a face
+    (past the greeting), fire a random sound every few seconds and wiggle the
+    ears now and then, on independent jittered schedules.
+
+    Pure + deterministic (inject an rng) so it unit-tests off-robot. It never
+    fights the greeting: the caller only drives it during the GREETED phase.
+    Going inactive (face lost / tracking stopped) reschedules both timers so it
+    doesn't fire the instant a face is re-acquired."""
+
+    def __init__(self, sound_pool=CHATTER_SOUNDS, rng=None,
+                 sound_every=CHATTER_SOUND_EVERY, wiggle_every=CHATTER_WIGGLE_EVERY,
+                 wiggle_s=CHATTER_WIGGLE_S, wiggle_amp=CHATTER_WIGGLE_AMP,
+                 wiggle_hz=CHATTER_WIGGLE_HZ):
+        import random as _random
+        self.sound_pool = list(sound_pool)
+        self.rng = rng if rng is not None else _random.Random()
+        self.sound_every = sound_every
+        self.wiggle_every = wiggle_every
+        self.wiggle_s = wiggle_s
+        self.wiggle_amp = wiggle_amp
+        self.wiggle_hz = wiggle_hz
+
+        self._active = False
+        self._next_sound = None
+        self._next_wiggle = None
+        self._wiggle_until = 0.0
+        self._wiggle_t0 = 0.0
+
+    def _reschedule(self, now):
+        self._next_sound = now + self.rng.uniform(*self.sound_every)
+        self._next_wiggle = now + self.rng.uniform(*self.wiggle_every)
+
+    def reset(self, now):
+        self._active = False
+        self._wiggle_until = 0.0
+        self._reschedule(now)
+
+    def update(self, now, active):
+        """`active` = we are steadily tracking a face this tick. Returns a
+        ChatterOutput (play_sound / antenna, either possibly None)."""
+        out = ChatterOutput()
+        if not active:
+            # Re-arm timers from 'now' so re-acquiring a face doesn't instantly fire.
+            if self._active or self._next_sound is None:
+                self._reschedule(now)
+            self._active = False
+            self._wiggle_until = 0.0
+            return out
+
+        if not self._active:
+            self._active = True
+            if self._next_sound is None:
+                self._reschedule(now)
+
+        # sound
+        if self._next_sound is not None and now >= self._next_sound:
+            if self.sound_pool:
+                out.play_sound = self.rng.choice(self.sound_pool)
+            self._next_sound = now + self.rng.uniform(*self.sound_every)
+
+        # start a wiggle window
+        if self._next_wiggle is not None and now >= self._next_wiggle:
+            self._wiggle_t0 = now
+            self._wiggle_until = now + self.wiggle_s
+            self._next_wiggle = now + self.rng.uniform(*self.wiggle_every)
+
+        # emit the wiggle value while inside its window
+        if now < self._wiggle_until:
+            phase = (now - self._wiggle_t0) * self.wiggle_hz * 2.0 * math.pi
+            out.antenna = self.wiggle_amp * math.sin(phase)
+
+        return out
+
+
 class FaceCamera:
     """Captures low-res frames from the picam and runs the bundled OpenCV Haar
     face detector on a daemon thread (~DETECT_FPS), publishing only the nearest
