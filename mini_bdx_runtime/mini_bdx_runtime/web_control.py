@@ -1,0 +1,172 @@
+"""
+Tiny phone Web UI server for the Open Duck Mini.
+
+Zero external dependencies: a stdlib ThreadingHTTPServer on a daemon thread. The
+phone connects to the robot's own Wi-Fi/AP and loads a single self-contained page
+(webui/index.html). It polls GET /api/state (~4 Hz) and POSTs joystick/button
+intents into a shared ControlBus, which the input reader folds in alongside the
+gamepad. CPU cost is negligible next to ONNX inference: a lock-guarded snapshot
+and a few tiny JSON responses per second.
+
+The API routing is a pure function (handle_api) so it unit-tests without sockets.
+See docs/webui-api.md for the contract.
+"""
+import json
+import os
+import socket
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+WEBUI_DIR = os.path.join(HERE, "webui")
+DEFAULT_PORT = 8080
+
+_FALLBACK_HTML = (
+    "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>"
+    "<style>body{font-family:system-ui;background:#1a1712;color:#f0e6d2;padding:2rem}"
+    "code{color:#ffb347}</style><h1>Duck control</h1>"
+    "<p>The UI page <code>webui/index.html</code> isn't installed, but the API is up.</p>"
+    "<p>Try <code>GET /api/state</code>.</p>"
+)
+
+
+def _json_bytes(obj):
+    return json.dumps(obj, separators=(",", ":")).encode("utf-8")
+
+
+def handle_api(method, path, body_bytes, bus, now):
+    """Route an /api/* request purely (no sockets). Returns
+    (status:int, content_type:str, body:bytes) or None if `path` isn't an API
+    route (caller then serves a static file)."""
+    if not path.startswith("/api/"):
+        return None
+
+    if method == "GET" and path == "/api/state":
+        return 200, "application/json", _json_bytes(bus.get_telemetry())
+
+    if method == "POST" and path == "/api/command":
+        try:
+            d = json.loads(body_bytes or b"{}")
+        except (ValueError, TypeError):
+            return 400, "application/json", _json_bytes({"ok": False, "error": "bad json"})
+        bus.set_command(
+            now=now,
+            active=bool(d.get("active", False)),
+            l_x=d.get("l_x", 0.0), l_y=d.get("l_y", 0.0),
+            r_x=d.get("r_x", 0.0), r_y=d.get("r_y", 0.0),
+            left_trigger=d.get("left_trigger", 0.0),
+            right_trigger=d.get("right_trigger", 0.0),
+        )
+        return 200, "application/json", _json_bytes({"ok": True})
+
+    if method == "POST" and path == "/api/button":
+        try:
+            d = json.loads(body_bytes or b"{}")
+        except (ValueError, TypeError):
+            return 400, "application/json", _json_bytes({"ok": False, "error": "bad json"})
+        ok = bus.push_button(str(d.get("button", "")), str(d.get("action", "press")))
+        return (200 if ok else 400), "application/json", _json_bytes({"ok": bool(ok)})
+
+    return 404, "application/json", _json_bytes({"ok": False, "error": "not found"})
+
+
+def _read_index():
+    path = os.path.join(WEBUI_DIR, "index.html")
+    try:
+        with open(path, "rb") as f:
+            return f.read(), "text/html; charset=utf-8"
+    except OSError:
+        return _FALLBACK_HTML.encode("utf-8"), "text/html; charset=utf-8"
+
+
+def get_lan_ip():
+    """Best-effort LAN IP for printing the phone URL (no traffic actually sent)."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))
+        return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        s.close()
+
+
+def _make_handler(bus, clock):
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, *args):  # silence per-request stderr spam (4 Hz poll)
+            pass
+
+        def _send(self, status, content_type, body, extra=None):
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            for k, v in (extra or {}).items():
+                self.send_header(k, v)
+            self.end_headers()
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+        def do_GET(self):
+            path = self.path.split("?", 1)[0]
+            if path.startswith("/api/"):
+                r = handle_api("GET", path, b"", bus, clock())
+                self._send(*r)
+                return
+            if path in ("/", "/index.html"):
+                body, ct = _read_index()
+                self._send(200, ct, body)
+                return
+            if path == "/healthz":
+                self._send(200, "text/plain", b"ok")
+                return
+            self._send(404, "text/plain", b"not found")
+
+        def do_POST(self):
+            path = self.path.split("?", 1)[0]
+            length = int(self.headers.get("Content-Length", 0) or 0)
+            body = self.rfile.read(length) if length else b""
+            r = handle_api("POST", path, body, bus, clock())
+            if r is None:
+                self._send(404, "text/plain", b"not found")
+            else:
+                self._send(*r)
+
+    return Handler
+
+
+class WebControlServer:
+    """Owns the HTTP server thread. Construct with the shared ControlBus, call
+    start(); the control loop calls bus.set_telemetry(...) each tick."""
+
+    def __init__(self, bus, host="0.0.0.0", port=DEFAULT_PORT, clock=None):
+        import time as _time
+        self.bus = bus
+        self.host = host
+        self.port = port
+        self._clock = clock or _time.time
+        self._httpd = None
+        self._thread = None
+
+    def start(self):
+        handler = _make_handler(self.bus, self._clock)
+        self._httpd = ThreadingHTTPServer((self.host, self.port), handler)
+        self._httpd.daemon_threads = True
+        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
+        self._thread.start()
+        url = f"http://{get_lan_ip()}:{self.port}"
+        print(f"[web] control UI at {url}  (also http://<robot>.local:{self.port})")
+        return url
+
+    def stop(self):
+        if self._httpd is not None:
+            try:
+                self._httpd.shutdown()
+                self._httpd.server_close()
+            except Exception:
+                pass
+            self._httpd = None
