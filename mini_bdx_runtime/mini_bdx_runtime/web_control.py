@@ -124,6 +124,9 @@ def _make_handler(bus, clock):
             if path == "/healthz":
                 self._send(200, "text/plain", b"ok")
                 return
+            if path == "/favicon.ico":       # avoid a noisy 404 per page load
+                self._send(204, "image/x-icon", b"")
+                return
             self._send(404, "text/plain", b"not found")
 
         def do_POST(self):
