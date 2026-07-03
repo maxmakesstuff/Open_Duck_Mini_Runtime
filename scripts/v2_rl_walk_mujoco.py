@@ -15,10 +15,75 @@ from mini_bdx_runtime.antennas import Antennas
 from mini_bdx_runtime.projector import Projector
 from mini_bdx_runtime.rl_utils import make_action_dict, LowPassActionFilter
 from mini_bdx_runtime.duck_config import DuckConfig
+from mini_bdx_runtime.walk_record import WalkRecorder
+from mini_bdx_runtime.fall_detector import FallDetector
+# Optional: Web UI + scanner sound. The walk still runs if these are absent.
+try:
+    from mini_bdx_runtime.control_bus import ControlBus
+    from mini_bdx_runtime.web_control import WebControlServer
+    from mini_bdx_runtime.telemetry import BatteryMonitor, build_state
+except ImportError:
+    ControlBus = WebControlServer = BatteryMonitor = build_state = None
+try:
+    from mini_bdx_runtime.scanner_sound import ScannerSound, PygameScannerBackend
+except ImportError:
+    ScannerSound = PygameScannerBackend = None
 
+import math
 import os
 
 HOME_DIR = os.path.expanduser("~")
+
+# DPAD-LEFT hold (s) to start a whole-body recording; walk_recording.pkl persists
+# the last take across restarts (handy for events).
+WALK_RECORD_HOLD_S = 3.0
+WALK_RECORDING_PATH = os.path.join(os.getcwd(), "walk_recording.pkl")
+
+
+def _accel_pitch_roll(accel):
+    """Best-effort pitch/roll (deg) from the accelerometer gravity vector, for the
+    Web UI attitude horizon. Axis convention may need per-robot tuning — cosmetic,
+    never used for control. Returns None if accel is missing."""
+    if accel is None or len(accel) < 3:
+        return None
+    ax, ay, az = float(accel[0]), float(accel[1]), float(accel[2])
+    pitch = math.degrees(math.atan2(-ax, math.sqrt(ay * ay + az * az) or 1e-9))
+    roll = math.degrees(math.atan2(ay, az if az != 0 else 1e-9))
+    return {"pitch": round(pitch, 1), "roll": round(roll, 1)}
+
+
+class _HoldDetector:
+    """Fires once when a button has been held continuously for `duration` (same
+    contract as head_puppet's). reset_require_release() blocks re-arming until the
+    button is released."""
+
+    def __init__(self, duration):
+        self.duration = duration
+        self.start = None
+        self.fired = False
+        self._need_release = False
+
+    def reset_require_release(self):
+        self.start = None
+        self.fired = False
+        self._need_release = True
+
+    def update(self, pressed, now):
+        if self._need_release:
+            if not pressed:
+                self._need_release = False
+            return False
+        if pressed:
+            if self.start is None:
+                self.start = now
+                self.fired = False
+            if not self.fired and now - self.start >= self.duration:
+                self.fired = True
+                return True
+        else:
+            self.start = None
+            self.fired = False
+        return False
 
 
 class RLWalk:
@@ -95,8 +160,14 @@ class RLWalk:
         self.paused = self.duck_config.start_paused
 
         self.command_freq = 20  # hz
+        # Phone Web UI shares one ControlBus with the gamepad (parallel control).
+        self.web_bus = None
+        if getattr(self.duck_config, "web_ui", False) and ControlBus is not None:
+            self.web_bus = ControlBus()
         if self.commands:
-            self.xbox_controller = XBoxController(self.command_freq)
+            self.xbox_controller = XBoxController(
+                self.command_freq, web_bus=self.web_bus
+            )
 
         # Reference motion, but we only really need the length of one phase
         # TODO
@@ -120,9 +191,186 @@ class RLWalk:
         if self.duck_config.antennas:
             self.antennas = Antennas()
 
+        # ---- record/playback (whole-body command stream), fall detection ----
+        self.recorder = WalkRecorder(self.control_freq)
+        try:
+            if os.path.exists(WALK_RECORDING_PATH):
+                n = self.recorder.load(WALK_RECORDING_PATH)
+                print(f"[walk] loaded {n} recorded frames "
+                      f"({self.recorder.duration_s:.1f}s) — DPAD-RIGHT to play")
+        except Exception as e:  # noqa: BLE001
+            print(f"[walk] could not load recording: {e}")
+        self._record_hold = _HoldDetector(WALK_RECORD_HOLD_S)
+        self._record_stop_armed = False
+
+        self.fall_detector = FallDetector()
+
+        # ---- scanner lamp-loop coupled to the projector LED ----
+        self.scanner = None
+        if self.duck_config.speaker and ScannerSound is not None:
+            try:
+                self.scanner = ScannerSound(
+                    PygameScannerBackend("../mini_bdx_runtime/assets/scanner/")
+                )
+            except Exception as e:  # noqa: BLE001
+                print(f"[walk] scanner sound unavailable: {e}")
+                self.scanner = None
+
+        # ---- telemetry / web server ----
+        self.loop_hz = float(self.control_freq)
+        self._last_imu = None
+        self._start_t = time.time()
+        self.battery_mon = (
+            BatteryMonitor(getattr(self.duck_config, "battery", {}))
+            if BatteryMonitor is not None else None
+        )
+        self._features = {
+            "antennas": self.duck_config.antennas,
+            "projector": self.duck_config.projector,
+            "speaker": self.duck_config.speaker,
+            "camera": self.duck_config.camera,
+        }
+        self._sound_names = (
+            list(self.sounds.sounds.keys())
+            if self.duck_config.speaker and getattr(self, "sounds", None)
+            and self.sounds.ok else []
+        )
+        self.web_server = None
+        if self.web_bus is not None and WebControlServer is not None:
+            try:
+                self.web_server = WebControlServer(
+                    self.web_bus, port=getattr(self.duck_config, "web_port", 8080)
+                )
+                self.web_server.start()
+            except Exception as e:  # noqa: BLE001
+                print(f"[walk] web UI unavailable: {e}")
+                self.web_server = None
+
+    # ------------------------------------------------------ helpers (walk) ----
+    def _walk_stick_active(self, c):
+        """True if the operator is meaningfully pushing a walk stick (used to break
+        out of playback). Deadzones scaled per command range to ignore drift."""
+        return abs(c[0]) > 0.03 or abs(c[1]) > 0.04 or abs(c[2]) > 0.1
+
+    def _couple_scanner(self, now):
+        if self.scanner is None:
+            return
+        want = self.duck_config.projector and self.projector.on
+        if want and not self.scanner.is_active:
+            self.scanner.start(now)
+        elif not want and self.scanner.is_active:
+            self.scanner.stop()
+        self.scanner.update(now)
+
+    def _save_recording(self):
+        try:
+            self.recorder.save(WALK_RECORDING_PATH)
+        except Exception as e:  # noqa: BLE001
+            print(f"[walk] could not save recording: {e}")
+
+    def _handle_record_playback(self, raw_commands, now):
+        """DPAD-LEFT hold 3s = record; DPAD-RIGHT = play/stop. Mirrors head_puppet."""
+        dl = getattr(self.buttons, "dpad_left", None)
+        dr = getattr(self.buttons, "dpad_right", None)
+        if dl is None or dr is None:
+            return
+        speaker = self.duck_config.speaker
+
+        if self.recorder.state == "idle":
+            if self._record_hold.update(dl.is_pressed, now):
+                self.recorder.start_recording()
+                self._record_stop_armed = False
+                cap_s = self.recorder.max_frames / self.control_freq
+                print(f"● WALK RECORDING (max {cap_s:.0f}s) — tap DPAD-LEFT to stop")
+                if speaker:
+                    self.sounds.play("happy1.wav")
+            elif dr.triggered:
+                if self.recorder.has_recording():
+                    self.recorder.start_playback()
+                    print(f"▶ WALK PLAYBACK ({self.recorder.duration_s:.1f}s) — "
+                          "looping; DPAD-RIGHT or a stick to stop")
+                    if speaker:
+                        self.sounds.play("beep1.wav")
+                else:
+                    print("(nothing recorded — hold DPAD-LEFT 3s first)")
+        elif self.recorder.state == "recording":
+            if not dl.is_pressed:
+                self._record_stop_armed = True
+            if self._record_stop_armed and dl.triggered:
+                self.recorder.stop_recording()
+                self._record_hold.reset_require_release()
+                self._record_stop_armed = False
+                self._save_recording()
+                print(f"⏹ stored {self.recorder.duration_s:.1f}s. DPAD-RIGHT to play.")
+                if speaker:
+                    self.sounds.play("beep2.wav")
+        elif self.recorder.state == "playing":
+            if dr.triggered:
+                self.recorder.request_stop(
+                    raw_commands, self.phase_frequency_factor_offset,
+                    self.buttons.LB.is_pressed,
+                )
+                print("■ stopping playback (ramping down)")
+
+    def _commands_for_tick(self, raw_commands, sprint, now):
+        """Pick this tick's command vector: recorded playback (through the live
+        policy) or live. Recording captures the live stream; playback overrides
+        the gait params too."""
+        if self.recorder.state == "recording":
+            still = self.recorder.record(
+                raw_commands, self.phase_frequency_factor_offset, sprint
+            )
+            if not still:  # hit the length cap
+                self._save_recording()
+                print(f"⏹ walk recording full ({self.recorder.duration_s:.1f}s). "
+                      "DPAD-RIGHT to play.")
+                if self.duck_config.speaker:
+                    self.sounds.play("beep2.wav")
+            return raw_commands
+        if self.recorder.state == "playing":
+            # Operator grabs a stick -> hand live control back IMMEDIATELY (like
+            # head_puppet). The graceful ramp-to-stand is reserved for the
+            # DPAD-RIGHT "stop with no input" case (handled via request_stop).
+            if self._walk_stick_active(raw_commands):
+                self.recorder.state = "idle"
+                return raw_commands
+            pf = self.recorder.next_frame()
+            if pf is not None:
+                lc, off, spr, _fin = pf
+                self.phase_frequency_factor_offset = off
+                self.phase_frequency_factor = 1.3 if spr else 1.0
+                return list(lc)
+            return raw_commands
+        return raw_commands
+
+    def _publish_telemetry(self, now):
+        if self.web_bus is None or build_state is None:
+            return
+        batt = (self.battery_mon.sample(now, self.hwi) if self.battery_mon
+                else {"voltage": None, "percent": None, "charging": None})
+        flags = {
+            "projector_on": bool(self.duck_config.projector and self.projector.on),
+            "head_control": getattr(self.xbox_controller, "head_control_mode", False)
+            if self.commands else False,
+            "sprint": self.phase_frequency_factor > 1.0,
+            "tracking": False,
+        }
+        self.web_bus.set_telemetry(build_state(
+            mode="walk", paused=self.paused, battery=batt, loop_hz=self.loop_hz,
+            temp_c=(self.battery_mon.temp_c if self.battery_mon else None),
+            fallen=self.fall_detector.fallen,
+            recording_state=self.recorder.state,
+            recording_frames=len(self.recorder.frames),
+            control_hz=self.control_freq, features=self._features, flags=flags,
+            sounds=self._sound_names, uptime_s=now - self._start_t,
+            imu=_accel_pitch_roll(self._last_imu.get("accelero") if self._last_imu else None),
+            gait_offset=self.phase_frequency_factor_offset,
+        ))
+
     def get_obs(self):
 
         imu_data = self.imu.get_data()
+        self._last_imu = imu_data
 
         dof_pos = self.hwi.get_present_positions(
             ignore=[
@@ -201,15 +449,29 @@ class RLWalk:
         try:
             print("Starting")
             start_t = time.time()
+            self._start_t = start_t
+            self._last_tick_t = None
+            self.fall_detector.reset(start_t)
             while True:
                 left_trigger = 0
                 right_trigger = 0
                 t = time.time()
 
+                # loop-rate estimate for the Web UI
+                if self._last_tick_t is not None:
+                    self.loop_hz = 0.9 * self.loop_hz + 0.1 * (
+                        1.0 / max(1e-6, t - self._last_tick_t)
+                    )
+                self._last_tick_t = t
+
+                raw_commands = list(self.last_commands)
+                sprint = False
                 if self.commands:
-                    self.last_commands, self.buttons, left_trigger, right_trigger = (
+                    raw_commands, self.buttons, left_trigger, right_trigger = (
                         self.xbox_controller.get_last_command()
                     )
+                    raw_commands = list(raw_commands)
+
                     if self.buttons.dpad_up.triggered:
                         self.phase_frequency_factor_offset += 0.05
                         print(
@@ -222,10 +484,8 @@ class RLWalk:
                             f"Phase frequency factor offset {round(self.phase_frequency_factor_offset, 3)}"
                         )
 
-                    if self.buttons.LB.is_pressed:
-                        self.phase_frequency_factor = 1.3
-                    else:
-                        self.phase_frequency_factor = 1.0
+                    sprint = self.buttons.LB.is_pressed
+                    self.phase_frequency_factor = 1.3 if sprint else 1.0
 
                     if self.buttons.X.triggered:
                         if self.duck_config.projector:
@@ -245,10 +505,37 @@ class RLWalk:
                             print("PAUSE")
                         else:
                             print("UNPAUSE")
+                            self.fall_detector.reset(t)  # re-arm after righting
+
+                    # whole-body record / playback (DPAD left/right)
+                    self._handle_record_playback(raw_commands, t)
+
+                # scanner sound follows the LED even while paused; publish telemetry
+                self._couple_scanner(t)
+                self._publish_telemetry(t)
 
                 if self.paused:
                     time.sleep(0.1)
                     continue
+
+                # ---- fall detection -> auto-pause ----
+                feet = self.feet_contacts.get()
+                if self.fall_detector.update(feet, t):
+                    self.paused = True
+                    if self.recorder.state == "playing":
+                        self.recorder.state = "idle"  # stop playback if we fell
+                    print("⚠ FALL DETECTED — auto-paused. Right the duck, then "
+                          "press A (or web Resume) to continue.")
+                    if self.duck_config.speaker:
+                        try:
+                            self.sounds.play("beep2.wav")
+                        except Exception:  # noqa: BLE001
+                            pass
+                    time.sleep(0.1)
+                    continue
+
+                # ---- choose command source: recorded playback vs live control ----
+                self.last_commands = self._commands_for_tick(raw_commands, sprint, t)
 
                 obs = self.get_obs()
                 if obs is None:
@@ -334,6 +621,10 @@ class RLWalk:
                 self.eyes.stop()
             if self.duck_config.projector:
                 self.projector.stop()
+            if self.scanner is not None:
+                self.scanner.stop()
+            if self.web_server is not None:
+                self.web_server.stop()
             self.feet_contacts.stop()
 
         if self.save_obs:
