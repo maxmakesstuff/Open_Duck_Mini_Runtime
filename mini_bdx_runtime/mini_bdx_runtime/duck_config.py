@@ -52,6 +52,12 @@ class DuckConfig:
             "phase_frequency_factor_offset", 0.0
         )
 
+        # Phone Web UI (on by default; set "web_ui": false to disable). Served on
+        # web_port; battery mapping is per-pack (2S LiPo defaults).
+        self.web_ui = self.json_config.get("web_ui", True)
+        self.web_port = int(self.json_config.get("web_port", 8080))
+        self.battery = self.json_config.get("battery", {})
+
         expression_features = self.json_config.get("expression_features", {})
 
         self.eyes = expression_features.get("eyes", False)
