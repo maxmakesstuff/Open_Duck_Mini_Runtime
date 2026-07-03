@@ -40,7 +40,7 @@ from mini_bdx_runtime.sounds import Sounds
 from mini_bdx_runtime.antennas import Antennas
 from mini_bdx_runtime.projector import Projector
 from mini_bdx_runtime.face_tracker import (
-    FaceCamera, FacePresence, GreetSequence,
+    FaceCamera, FacePresence, GreetSequence, TrackingChatter, CHATTER_SOUNDS,
     servo_step, normalized_error, map_error_to_axes, select_head_source,
 )
 # scanner_sound ships alongside this file; if it (or its assets) somehow isn't on
@@ -49,6 +49,13 @@ try:
     from mini_bdx_runtime.scanner_sound import ScannerSound, PygameScannerBackend
 except ImportError:
     ScannerSound = PygameScannerBackend = None
+# Web UI is optional; if the modules aren't present the puppet still runs.
+try:
+    from mini_bdx_runtime.control_bus import ControlBus
+    from mini_bdx_runtime.web_control import WebControlServer
+    from mini_bdx_runtime.telemetry import BatteryMonitor, build_state
+except ImportError:
+    ControlBus = WebControlServer = BatteryMonitor = build_state = None
 
 # ----------------------------- tunables -----------------------------
 CONTROL_HZ = 60
@@ -170,7 +177,15 @@ class HoldDetector:
 # ----------------------------- main loop -----------------------------
 def main():
     duck_config = DuckConfig()
-    controller = XBoxController(CONTROL_HZ, only_head_control=True)
+
+    # Phone Web UI (optional) — shares one ControlBus with the gamepad so both can
+    # drive the head in parallel. Started before the controller so it can be merged.
+    web_bus = None
+    web_server = None
+    if getattr(duck_config, "web_ui", False) and ControlBus is not None:
+        web_bus = ControlBus()
+
+    controller = XBoxController(CONTROL_HZ, only_head_control=True, web_bus=web_bus)
 
     sounds = (
         Sounds(volume=1.0, sound_directory="../mini_bdx_runtime/assets/")
@@ -206,6 +221,65 @@ def main():
     hwi.set_kds([0] * 14)
     hwi.turn_on()
 
+    # Communicative chatter while steadily tracking a face (random sounds + ear
+    # wiggles). Pool = curated droid sounds actually loaded on this robot.
+    chatter_pool = (
+        [s for s in CHATTER_SOUNDS if sounds is not None and s in sounds.sounds]
+    )
+    chatter = TrackingChatter(sound_pool=chatter_pool)
+
+    # Start the Web UI server now that the HWI exists (telemetry reads voltage/temp
+    # through it). Degrades cleanly if the port is taken / modules missing.
+    battery_mon = BatteryMonitor(getattr(duck_config, "battery", {})) if BatteryMonitor else None
+    if web_bus is not None and WebControlServer is not None:
+        try:
+            web_server = WebControlServer(web_bus, port=getattr(duck_config, "web_port", 8080))
+            web_server.start()
+        except Exception as e:  # noqa: BLE001
+            print(f"[head_puppet] web UI unavailable: {e}")
+            web_server = None
+
+    def couple_scanner(now):
+        """Keep the lamp-loop playing exactly while the scanner LED is on (manual
+        X toggle or a played-back projector event). TRACKING drives it separately."""
+        if scanner is None:
+            return
+        want = projector is not None and projector.on
+        if want and not scanner.is_active:
+            scanner.start(now)
+        elif not want and scanner.is_active:
+            scanner.stop()
+        scanner.update(now)
+
+    _sound_names = list(sounds.sounds.keys()) if sounds is not None else []
+    _features = {
+        "antennas": bool(antennas), "projector": bool(projector),
+        "speaker": bool(sounds), "camera": bool(face_cam),
+    }
+    loop_hz = float(CONTROL_HZ)
+    _last_tick_t = None
+    _start_t = time.time()
+
+    def publish_telemetry(now, state, recording):
+        if web_bus is None or build_state is None:
+            return
+        batt = battery_mon.sample(now, hwi) if battery_mon else {
+            "voltage": None, "percent": None, "charging": None}
+        rec_state = ("recording" if state == "RECORDING"
+                     else "playing" if state == "PLAYBACK" else "idle")
+        flags = {
+            "projector_on": bool(projector and projector.on),
+            "head_control": True, "sprint": False,
+            "tracking": state == "TRACKING",
+        }
+        web_bus.set_telemetry(build_state(
+            mode="head_puppet", paused=False, battery=batt, loop_hz=loop_hz,
+            temp_c=(battery_mon.temp_c if battery_mon else None), fallen=False,
+            recording_state=rec_state, recording_frames=len(recording),
+            control_hz=CONTROL_HZ, features=_features, flags=flags,
+            sounds=_sound_names, uptime_s=now - _start_t, imu=None,
+        ))
+
     state = "LIVE"                      # LIVE | RECORDING | PLAYBACK
     recording = []                     # list of frame dicts
     prev_head = [0.0, 0.0, 0.0]        # (yaw, roll, pitch) carried for the slew limiter
@@ -226,6 +300,10 @@ def main():
     try:
         while True:
             now = time.time()
+            if _last_tick_t is not None:
+                loop_hz = 0.9 * loop_hz + 0.1 * (1.0 / max(1e-6, now - _last_tick_t))
+            _last_tick_t = now
+            publish_telemetry(now, state, recording)
             last_commands, buttons, left_trigger, right_trigger = (
                 controller.get_last_command()
             )
@@ -240,6 +318,7 @@ def main():
                     state = "TRACKING"
                     presence = FacePresence()
                     greet = GreetSequence()
+                    chatter.reset(now)
                     playback_idx = 0
                     tracking_armed = False
                     last_face = None
@@ -318,6 +397,9 @@ def main():
                     playback_idx = (playback_idx + 1) % len(recording)
 
                 g = greet.update(now, presence)
+                # Chatter only once we're steadily tracking (greeting done); pass
+                # active=False otherwise so its timers stay armed for next time.
+                chat = chatter.update(now, src == "servo" and greet.state == "GREETED")
 
                 # ---- head target ----
                 if src == "servo" and last_face is not None:
@@ -351,18 +433,23 @@ def main():
                 hwi.set_position("head_roll", prev_head[1])
                 hwi.set_position("head_pitch", prev_head[2])
 
-                # ---- antennas: greet wiggle wins; else the idle keyframe ----
+                # ---- antennas: greet wiggle > chatter wiggle > idle keyframe ----
                 if g.antenna is not None and antennas is not None:
                     antennas.set_position_left(clamp(g.antenna, -1.0, 1.0))
                     antennas.set_position_right(clamp(g.antenna, -1.0, 1.0))
+                elif chat.antenna is not None and antennas is not None:
+                    antennas.set_position_left(clamp(chat.antenna, -1.0, 1.0))
+                    antennas.set_position_right(clamp(chat.antenna, -1.0, 1.0))
                 elif keyframe is not None and antennas is not None:
                     al, ar = keyframe["ant"]
                     antennas.set_position_left(clamp(al, -1.0, 1.0))
                     antennas.set_position_right(clamp(ar, -1.0, 1.0))
 
-                # ---- sound: greet one-shot; else the idle keyframe's sound ----
+                # ---- sound: greet one-shot > chatter > idle keyframe's sound ----
                 if g.play_sound and sounds is not None:
                     sounds.play(g.play_sound)
+                elif chat.play_sound and sounds is not None:
+                    sounds.play(chat.play_sound)
                 elif keyframe is not None and keyframe["sound"] and sounds is not None:
                     sounds.play(keyframe["sound"])
 
@@ -421,6 +508,7 @@ def main():
                 if projector is not None and frame["proj"] is not None:
                     if frame["proj"] != projector.on:
                         projector.switch()
+                couple_scanner(now)  # lamp-loop follows a played-back projector event
 
                 time.sleep(DT)
                 continue
@@ -446,6 +534,7 @@ def main():
             if buttons.X.triggered and projector is not None:
                 projector.switch()
             proj_state = projector.on if projector is not None else None
+            couple_scanner(now)  # scanner sound plays while the LED is on
 
             # ---- capture a frame while recording ----
             if state == "RECORDING":
@@ -481,6 +570,8 @@ def main():
             scanner.stop()
         if face_cam is not None:
             face_cam.stop()
+        if web_server is not None:
+            web_server.stop()
         print("head puppet off")
 
 

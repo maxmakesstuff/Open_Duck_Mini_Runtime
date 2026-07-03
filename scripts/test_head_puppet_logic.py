@@ -36,10 +36,13 @@ def _install_fakes():
         setattr(m, attr, _D)
         sys.modules[f"mini_bdx_runtime.{name}"] = m
     _ft = types.ModuleType("mini_bdx_runtime.face_tracker")
-    for _n in ("FaceCamera", "FacePresence", "GreetSequence", "servo_step",
-               "normalized_error", "map_error_to_axes", "select_head_source"):
+    for _n in ("FaceCamera", "FacePresence", "GreetSequence", "TrackingChatter",
+               "servo_step", "normalized_error", "map_error_to_axes",
+               "select_head_source"):
         setattr(_ft, _n, _D)
+    _ft.CHATTER_SOUNDS = ("happy1.wav",)
     sys.modules["mini_bdx_runtime.face_tracker"] = _ft
+    # web/telemetry modules are optional in head_puppet (guarded import -> None).
     _ss = types.ModuleType("mini_bdx_runtime.scanner_sound")
     for _n in ("ScannerSound", "PygameScannerBackend"):
         setattr(_ss, _n, _D)
