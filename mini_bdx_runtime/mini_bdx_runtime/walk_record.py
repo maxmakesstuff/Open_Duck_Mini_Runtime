@@ -135,9 +135,10 @@ class WalkRecorder:
 
     def request_stop(self, from_commands, gait_offset, sprint):
         """Begin a graceful stop from the current live command (decelerate to a
-        stand over stop_ramp_s), instead of cutting to zero. Safe to call when
-        already idle (no-op)."""
-        if self.state != "playing":
+        stand over stop_ramp_s), instead of cutting to zero. Idempotent: calling
+        it again while already ramping does NOT restart the ramp (so holding a
+        button can't stall the deceleration). No-op unless currently playing."""
+        if self.state != "playing" or self._ramp is not None:
             return
         self._ramp = (
             commands_to_frame(from_commands, gait_offset, sprint),

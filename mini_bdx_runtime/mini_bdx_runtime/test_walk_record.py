@@ -97,6 +97,27 @@ def test_stop_ramp_decelerates_to_zero():
         assert b <= a + EPS
 
 
+def test_request_stop_is_idempotent():
+    # Calling request_stop every tick (e.g. a held button) must NOT restart the
+    # ramp, or the deceleration would never complete.
+    rec = WalkRecorder(control_hz=50, stop_ramp_s=0.1)  # 5-tick ramp
+    rec.start_recording()
+    for _ in range(20):
+        rec.record([0.15, 0, 0, 0, 0, 0, 0], 0.0, False)
+    rec.stop_recording()
+    rec.start_playback()
+    rec.next_frame()
+    finished = False
+    for _ in range(12):
+        rec.request_stop([0.15, 0, 0, 0, 0, 0, 0], 0.0, False)  # spam it
+        r = rec.next_frame()
+        if r and r[3]:
+            finished = True
+            break
+    assert finished, "ramp must still finish even when request_stop is spammed"
+    assert rec.state == "idle"
+
+
 def test_non_looping_end_ramps_down():
     rec = WalkRecorder(control_hz=50, stop_ramp_s=0.1, loop=False)
     rec.start_recording()
