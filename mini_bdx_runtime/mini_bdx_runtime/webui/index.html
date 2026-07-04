@@ -111,6 +111,7 @@ body{
 .read .u{font-size:9px; color:var(--dim)}
 .read .rec{color:var(--dim)}
 .read .rec.on{color:var(--alarm)} .read .rec.play{color:var(--ok)}
+.read.gov.warn b{color:var(--amber-hot)}
 
 /* banner */
 #banner{min-height:0; height:0; overflow:hidden; border-radius:11px; text-align:center;
@@ -264,6 +265,7 @@ body{
       <div class="read"><span class="lbl">temp</span><b id="temp">--</b><span class="u">°C</span></div>
       <div class="read"><span class="lbl">rec</span><b class="rec" id="rec">idle</b></div>
       <div class="read"><span class="lbl">up</span><b id="up">--</b><span class="u">s</span></div>
+      <div class="read gov hidden" id="govRead"><span class="lbl">gov</span><b id="gov">1.00</b><span class="u">×</span></div>
     </div>
   </section>
 
@@ -559,6 +561,16 @@ function render(s){
   if(s.mode==="head_puppet") setActive("btnUp", f.tracking);
   const g=$("gait"); if(g && s.gait_offset!=null) g.textContent=(s.gait_offset>=0?"+":"")+s.gait_offset.toFixed(2);
   $("ant").classList.toggle("hidden", feat.antennas===false);
+
+  // stability governor: only show the readout when it's enabled; warn while it throttles
+  const gov=s.governor, gvRead=$("govRead");
+  if(gvRead){
+    gvRead.classList.toggle("hidden", !(gov && gov.enabled));
+    if(gov && gov.enabled){
+      $("gov").textContent=(gov.scale!=null?gov.scale:1).toFixed(2);
+      gvRead.classList.toggle("warn", (gov.severity||0)>0.05);
+    }
+  }
 
   // IMU trim card: walk-mode only; show live values in degrees
   $("trim").classList.toggle("hidden", s.mode==="head_puppet");

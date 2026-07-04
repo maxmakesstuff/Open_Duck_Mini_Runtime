@@ -52,6 +52,7 @@ FILES=(
   "mini_bdx_runtime/mini_bdx_runtime/rustypot_position_hwi.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/raw_imu.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/imu_trim.py|mini_bdx_runtime/mini_bdx_runtime"
+  "mini_bdx_runtime/mini_bdx_runtime/stability_governor.py|mini_bdx_runtime/mini_bdx_runtime"
   # --- Web UI page (served by web_control.py) ---
   "mini_bdx_runtime/mini_bdx_runtime/webui/index.html|mini_bdx_runtime/mini_bdx_runtime/webui"
   "mini_bdx_runtime/mini_bdx_runtime/webui/mock_server.py|mini_bdx_runtime/mini_bdx_runtime/webui"

@@ -68,6 +68,12 @@ def build_state():
         "battery": {"voltage": round(volt, 2), "percent": pct, "charging": charging},
         "imu": {"pitch": round(pitch, 1), "roll": round(roll, 1)},
         "imu_trim": {"pitch": round(TRIM["pitch"], 4), "roll": round(TRIM["roll"], 4)},
+        # governor enabled so the readout is exercised: severity tracks the wobble,
+        # scale = 1 - 0.8*severity (floor 0.2), so it dips + warns as the duck tips.
+        "governor": (lambda sev: {
+            "enabled": True, "severity": round(sev, 3),
+            "scale": round(1.0 - 0.8 * sev, 3),
+        })(clamp((math.hypot(pitch, roll) - 8) / 14, 0, 1)),
         "loop_hz": round(49.6 + 0.3 * math.sin(t * 3), 1),
         "temp_c": round(38 + 6 * (0.5 + 0.5 * math.sin(t * 0.15)), 1),
         "fallen": fallen,

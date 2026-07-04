@@ -75,6 +75,18 @@ class DuckConfig:
         # Residual IMU mounting-tilt trim (radians), applied to accel+gyro on top of
         # the axis_remap. Default 0 = no change. Measure it with imu_health_check.py.
         self.imu_trim = self.json_config.get("imu_trim", {"pitch": 0.0, "roll": 0.0})
+
+        # --- walk stability levers (all default to today's behaviour) ---
+        # Policy residual scale. None -> the walk keeps its own default / CLI value.
+        self.action_scale = self.json_config.get("action_scale", None)
+        # Per-tick motor-target slew clamp (a safety net). Off by default.
+        self.velocity_clip = bool(self.json_config.get("velocity_clip", False))
+        self.max_motor_velocity_rad_s = float(
+            self.json_config.get("max_motor_velocity_rad_s", 5.24)
+        )
+        # Tilt-based stability governor (eases drive commands when tipping). The dict
+        # is passed to stability_governor.governor_from_config; {} -> disabled.
+        self.stability_governor = self.json_config.get("stability_governor", {})
         self.phase_frequency_factor_offset = self.json_config.get(
             "phase_frequency_factor_offset", 0.0
         )

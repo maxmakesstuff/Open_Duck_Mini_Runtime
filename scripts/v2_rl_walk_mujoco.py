@@ -17,6 +17,9 @@ from mini_bdx_runtime.rl_utils import make_action_dict, LowPassActionFilter
 from mini_bdx_runtime.duck_config import DuckConfig
 from mini_bdx_runtime.walk_record import WalkRecorder
 from mini_bdx_runtime.fall_detector import FallDetector
+from mini_bdx_runtime.stability_governor import (
+    governor_from_config, tilt_angle_deg, tilt_rate,
+)
 # Optional: Web UI + scanner sound. The walk still runs if these are absent.
 try:
     from mini_bdx_runtime.control_bus import ControlBus
@@ -99,7 +102,7 @@ class RLWalk:
         serial_port: str = "/dev/ttyACM0",
         control_freq: float = 50,
         pid=[30, 0, 0],
-        action_scale=0.25,
+        action_scale=None,
         commands=False,
         pitch_bias=0,
         save_obs=False,
@@ -116,7 +119,7 @@ class RLWalk:
         self.policy = OnnxInfer(self.onnx_model_path, awd=True)
 
         self.num_dofs = 14
-        self.max_motor_velocity = 5.24  # rad/s
+        self.max_motor_velocity = self.duck_config.max_motor_velocity_rad_s  # rad/s
 
         # Control
         self.control_freq = control_freq
@@ -151,7 +154,14 @@ class RLWalk:
         self.feet_contacts = FeetContacts()
 
         # Scales
-        self.action_scale = action_scale
+        # action_scale precedence: explicit CLI > duck_config > 0.25 default.
+        if action_scale is not None:
+            self.action_scale = action_scale
+        elif self.duck_config.action_scale is not None:
+            self.action_scale = float(self.duck_config.action_scale)
+        else:
+            self.action_scale = 0.25
+        print(f"action_scale = {self.action_scale}")
 
         self.last_action = np.zeros(self.num_dofs)
         self.last_last_action = np.zeros(self.num_dofs)
@@ -211,6 +221,10 @@ class RLWalk:
         self._record_stop_armed = False
 
         self.fall_detector = FallDetector()
+        # Tilt-based stability governor (disabled unless duck_config enables it).
+        self.governor = governor_from_config(self.duck_config.stability_governor)
+        self._gov_scale = 1.0
+        self._gov_severity = 0.0
 
         # ---- scanner lamp-loop coupled to the projector LED ----
         self.scanner = None
@@ -350,6 +364,25 @@ class RLWalk:
             return raw_commands
         return raw_commands
 
+    def _apply_stability_governor(self, commands):
+        """Ease the DRIVE commands (lin_vel_x/y, ang_vel — indices 0:3) when the duck
+        is tipping, using the PREVIOUS tick's IMU. Head commands (3:7) are untouched.
+        Mutates `commands` in place and returns the scale applied (1.0 = full speed;
+        the governor is a pure pass-through while disabled). Stores the scale/severity
+        on self for telemetry."""
+        scale = 1.0
+        if self.governor.enabled and self._last_imu is not None:
+            pr = _accel_pitch_roll(self._last_imu.get("accelero"))
+            tilt_deg = tilt_angle_deg(pr["pitch"], pr["roll"]) if pr else 0.0
+            gyro = self._last_imu.get("gyro")
+            rate = tilt_rate(gyro) if gyro is not None else 0.0
+            scale = self.governor.update(tilt_deg, rate)
+            for k in range(3):   # lin_vel_x, lin_vel_y, ang_vel only
+                commands[k] = commands[k] * scale
+        self._gov_scale = scale
+        self._gov_severity = self.governor.severity
+        return scale
+
     def _nudge_trim(self, axis, delta):
         """Adjust the LIVE IMU mounting trim (the worker re-reads it every loop, so
         this applies instantly). Clamped to +/-TRIM_LIMIT so a stuck button can't
@@ -399,6 +432,9 @@ class RLWalk:
             gait_offset=self.phase_frequency_factor_offset,
             imu_trim={"pitch": float(self.imu.pitch_trim),
                       "roll": float(self.imu.roll_trim)},
+            governor={"enabled": self.governor.enabled,
+                      "scale": round(float(self._gov_scale), 3),
+                      "severity": round(float(self._gov_severity), 3)},
         ))
 
     def get_obs(self):
@@ -599,6 +635,9 @@ class RLWalk:
                 # ---- choose command source: recorded playback vs live control ----
                 self.last_commands = self._commands_for_tick(raw_commands, sprint, t)
 
+                # Throttle drive velocity if the duck is tipping (no-op unless enabled).
+                self._apply_stability_governor(self.last_commands)
+
                 obs = self.get_obs()
                 if obs is None:
                     continue
@@ -638,13 +677,16 @@ class RLWalk:
 
                 self.motor_targets = self.init_pos + action * self.action_scale
 
-                # self.motor_targets = np.clip(
-                #     self.motor_targets,
-                #     self.prev_motor_targets
-                #     - self.max_motor_velocity * (1 / self.control_freq),  # control dt
-                #     self.prev_motor_targets
-                #     + self.max_motor_velocity * (1 / self.control_freq),  # control dt
-                # )
+                # Optional per-tick slew clamp: bound how far any joint target can move
+                # in one control dt (a safety net against a bad policy spike). Off by
+                # default -> today's behaviour; enable via duck_config "velocity_clip".
+                if self.duck_config.velocity_clip:
+                    max_delta = self.max_motor_velocity * (1 / self.control_freq)
+                    self.motor_targets = np.clip(
+                        self.motor_targets,
+                        self.prev_motor_targets - max_delta,
+                        self.prev_motor_targets + max_delta,
+                    )
 
                 if self.action_filter is not None:
                     self.action_filter.push(self.motor_targets)
@@ -705,7 +747,8 @@ if __name__ == "__main__":
         required=False,
         default=f"{HOME_DIR}/duck_config.json",
     )
-    parser.add_argument("-a", "--action_scale", type=float, default=0.25)
+    # default None -> fall back to duck_config "action_scale", else 0.25 (see ctor).
+    parser.add_argument("-a", "--action_scale", type=float, default=None)
     parser.add_argument("-p", type=int, default=30)
     parser.add_argument("-i", type=int, default=0)
     parser.add_argument("-d", type=int, default=0)

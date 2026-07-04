@@ -76,6 +76,18 @@ def test_build_state_imu_none_ok():
     assert s["imu"] is None and s["temp_c"] is None
 
 
+def test_build_state_governor_default_and_passthrough():
+    # default: no governor arg -> field present as None (UI hides the readout)
+    s = build_state("walk", False, {"voltage": None, "percent": None, "charging": None},
+                    50.0, None, False, "idle", 0, 50, {}, {}, [], 0.0)
+    assert s["governor"] is None
+    # explicit governor payload is carried through verbatim
+    gov = {"enabled": True, "scale": 0.6, "severity": 0.5}
+    s2 = build_state("walk", False, {"voltage": None, "percent": None, "charging": None},
+                     50.0, None, False, "idle", 0, 50, {}, {}, [], 0.0, governor=gov)
+    assert s2["governor"] == gov
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:
