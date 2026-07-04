@@ -35,6 +35,8 @@ FILES=(
   "scripts/v2_rl_walk_mujoco.py|scripts"
   "scripts/probe_battery.py|scripts"
   "scripts/find_soft_offsets.py|scripts"
+  "scripts/calibrate_imu.py|scripts"
+  "scripts/imu_health_check.py|scripts"
   # --- runtime library (mini_bdx_runtime package) ---
   "mini_bdx_runtime/mini_bdx_runtime/xbox_controller.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/buttons.py|mini_bdx_runtime/mini_bdx_runtime"
@@ -48,6 +50,8 @@ FILES=(
   "mini_bdx_runtime/mini_bdx_runtime/walk_record.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/duck_config.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/rustypot_position_hwi.py|mini_bdx_runtime/mini_bdx_runtime"
+  "mini_bdx_runtime/mini_bdx_runtime/raw_imu.py|mini_bdx_runtime/mini_bdx_runtime"
+  "mini_bdx_runtime/mini_bdx_runtime/imu_trim.py|mini_bdx_runtime/mini_bdx_runtime"
   # --- Web UI page (served by web_control.py) ---
   "mini_bdx_runtime/mini_bdx_runtime/webui/index.html|mini_bdx_runtime/mini_bdx_runtime/webui"
   "mini_bdx_runtime/mini_bdx_runtime/webui/mock_server.py|mini_bdx_runtime/mini_bdx_runtime/webui"

@@ -139,6 +139,8 @@ class RLWalk:
             sampling_freq=int(self.control_freq),
             user_pitch_bias=self.pitch_bias,
             upside_down=self.duck_config.imu_upside_down,
+            pitch_trim=float(self.duck_config.imu_trim.get("pitch", 0.0)),
+            roll_trim=float(self.duck_config.imu_trim.get("roll", 0.0)),
         )
 
         self.feet_contacts = FeetContacts()
