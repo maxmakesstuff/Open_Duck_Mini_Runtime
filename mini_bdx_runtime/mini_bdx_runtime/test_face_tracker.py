@@ -102,6 +102,22 @@ def test_presence_hysteresis_rides_dropouts():
     assert not p.present and p.just_lost
 
 
+def test_presence_default_rides_second_long_dropout():
+    # Regression: the module default hysteresis must ride out a ~1 s detection gap
+    # (e.g. you turn your head so frontal-Haar can't see you). Fails under the old
+    # 0.4 s default; passes at 1.2 s. Uses ft.FacePresence() with NO override so it
+    # pins the shipped default, which is what head_puppet constructs.
+    assert ft.LOST_TIMEOUT_S >= 1.0
+    p = ft.FacePresence()
+    p.update(True, 0.0)
+    p.update(False, 0.6)            # 0.6 s gap -> would already be lost at 0.4 s
+    assert p.present and not p.just_lost
+    p.update(False, 1.0)            # still within 1.2 s -> holds the lock
+    assert p.present and not p.just_lost
+    p.update(False, 1.5)            # now beyond the timeout -> released
+    assert not p.present and p.just_lost
+
+
 def test_presence_regreets_after_reacquire():
     p = ft.FacePresence(lost_timeout=0.4, greet_after=1.5)
     p.update(True, 0.0)

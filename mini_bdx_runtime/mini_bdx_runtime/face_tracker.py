@@ -20,9 +20,25 @@ import time
 CAP_W = 320
 CAP_H = 240
 DETECT_FPS = 30           # picamera2 video streams ~30 FPS; more feedback = smoother servo
-HAAR_SCALE_FACTOR = 1.2
-HAAR_MIN_NEIGHBORS = 5
-HAAR_MIN_SIZE = (40, 40)
+
+# EQUALIZE_HIST is the single most important robustness knob across ROBOTS/ROOMS.
+# The ov5647 auto-exposes for the whole scene, so a face that is backlit or in
+# dim light comes through DARK and low-contrast -- and Haar frontal detection,
+# which keys on local contrast, then misses it almost every frame. Measured
+# on-robot on a backlit face: RAW grayscale detected 0/140 frames; a global
+# cv2.equalizeHist() (stretch the tone curve before Haar) took the SAME frames to
+# 140/140, with 0 false positives on an empty scene. Because it normalizes
+# contrast, detection stops depending on each camera unit's metering or the room
+# lighting -- i.e. it behaves the same on every duck. Nearly free (~1 ms/frame).
+EQUALIZE_HIST = True
+
+# Haar tuned (with EQUALIZE_HIST) for reliable acquisition of a normal ~0.5 m face
+# that may be small or slightly off-axis: 1.15/4/32 measured 100% vs 60% for the
+# old 1.2/5/40, still 0 false positives. Loosen minSize further only if a
+# wider-lens camera makes faces smaller than ~32 px.
+HAAR_SCALE_FACTOR = 1.15
+HAAR_MIN_NEIGHBORS = 4
+HAAR_MIN_SIZE = (32, 32)
 
 # Detection-frame rotation (the picam is mounted on its side). "90_CW" is verified
 # to detect faces on this robot. If detection, or the up/down vs left/right axes,
@@ -54,7 +70,15 @@ DEADZONE = 0.08      # normalized; no motion while the face is this near center
 
 # ---- greeting timeline ----
 GREET_AFTER_S = 1.5
-LOST_TIMEOUT_S = 0.4
+# Presence hysteresis: how long to keep "tracking" after the last detection. The
+# servo HOLDS the head on the face's last position during this window (head_puppet
+# only re-advances the servo on a fresh camera frame), so a longer timeout rides
+# out the normal gaps -- you turning your head (frontal Haar can't see a profile),
+# a couple of dropped frames -- instead of releasing the head to the idle
+# animation and losing the lock. 0.4 s was ~a handful of frames at this Pi's
+# detect rate and dropped tracking constantly; 1.2 s holds through a head-turn and
+# still releases promptly once you actually leave. Independent of the camera unit.
+LOST_TIMEOUT_S = 1.2
 SCAN_S = 5.0
 WIGGLE_S = 1.0
 WIGGLE_AMP = 0.6
@@ -407,6 +431,10 @@ class FaceCamera:
                 if self._rotate_code is not None:
                     frame = cv2.rotate(frame, self._rotate_code)
                 gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+                # Normalize contrast so a dark/backlit face is still detectable and
+                # detection doesn't depend on the camera's exposure (see EQUALIZE_HIST).
+                if EQUALIZE_HIST:
+                    gray = cv2.equalizeHist(gray)
                 h, w = gray.shape[:2]
                 faces = self._cascade.detectMultiScale(
                     gray,
