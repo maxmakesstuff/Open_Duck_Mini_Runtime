@@ -67,6 +67,20 @@ def handle_api(method, path, body_bytes, bus, now):
         ok = bus.push_button(str(d.get("button", "")), str(d.get("action", "press")))
         return (200 if ok else 400), "application/json", _json_bytes({"ok": bool(ok)})
 
+    if method == "POST" and path == "/api/trim":
+        try:
+            d = json.loads(body_bytes or b"{}")
+        except (ValueError, TypeError):
+            return 400, "application/json", _json_bytes({"ok": False, "error": "bad json"})
+        if str(d.get("action", "")) == "save":
+            bus.push_trim_save()
+            return 200, "application/json", _json_bytes({"ok": True})
+        try:
+            ok = bus.push_trim(str(d.get("axis", "")), float(d.get("delta", 0.0)))
+        except (ValueError, TypeError):
+            return 400, "application/json", _json_bytes({"ok": False, "error": "bad delta"})
+        return (200 if ok else 400), "application/json", _json_bytes({"ok": bool(ok)})
+
     return 404, "application/json", _json_bytes({"ok": False, "error": "not found"})
 
 

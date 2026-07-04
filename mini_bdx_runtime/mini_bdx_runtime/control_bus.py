@@ -45,6 +45,11 @@ class ControlBus:
         self._pending = {b: 0 for b in BUTTONS}   # queued momentary "press" taps
         self._gap = {b: False for b in BUTTONS}   # forced release tick after a tap
 
+        # IMU-trim tuner channel: the web posts +/- nudges (accumulated) and a save
+        # request; the walk loop drains them each tick (see consume_trim).
+        self._trim_delta = {"pitch": 0.0, "roll": 0.0}
+        self._trim_save = False
+
         self._telemetry = {}
 
     # ------------------------------------------------------ web -> robot (in)
@@ -71,7 +76,32 @@ class ControlBus:
                 return False
         return True
 
+    def push_trim(self, axis, delta):
+        """Queue an IMU-trim nudge from the web (accumulated until consumed)."""
+        if axis not in self._trim_delta:
+            return False
+        with self._lock:
+            self._trim_delta[axis] += float(delta)
+        return True
+
+    def push_trim_save(self):
+        """Queue a 'save the current trim to duck_config' request from the web."""
+        with self._lock:
+            self._trim_save = True
+        return True
+
     # ------------------------------------------------------ robot <- web (read)
+    def consume_trim(self):
+        """Return (pitch_delta, roll_delta, save) accumulated since the last call,
+        resetting them. The walk loop applies the deltas to the live IMU."""
+        with self._lock:
+            p = self._trim_delta["pitch"]
+            r = self._trim_delta["roll"]
+            s = self._trim_save
+            self._trim_delta = {"pitch": 0.0, "roll": 0.0}
+            self._trim_save = False
+            return (p, r, s)
+
     def stick_override(self, now):
         """Return (active, l_x, l_y, r_x, r_y, left_trigger, right_trigger).
         `active` is False if the web hasn't posted recently (stale) -> gamepad wins."""

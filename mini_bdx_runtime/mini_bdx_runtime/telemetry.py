@@ -60,14 +60,15 @@ class BatteryMonitor:
 def build_state(mode, paused, battery, loop_hz, temp_c, fallen,
                 recording_state, recording_frames, control_hz,
                 features, flags, sounds, uptime_s,
-                imu=None, gait_offset=0.0, message=""):
+                imu=None, gait_offset=0.0, message="", imu_trim=None):
     """Assemble the /api/state dict. Pure -> unit-tested off-robot."""
     seconds = round(recording_frames / control_hz, 2) if control_hz else 0.0
     return {
         "mode": mode,
         "paused": bool(paused),
         "battery": dict(battery),
-        "imu": imu,                       # {"pitch":..,"roll":..} or None
+        "imu": imu,                       # {"pitch":..,"roll":..} or None (attitude)
+        "imu_trim": imu_trim,             # {"pitch":..,"roll":..} radians, or None
         "loop_hz": round(float(loop_hz), 1),
         "temp_c": temp_c,
         "fallen": bool(fallen),

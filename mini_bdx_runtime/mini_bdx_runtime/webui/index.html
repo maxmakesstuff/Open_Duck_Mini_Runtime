@@ -203,6 +203,16 @@ body{
        border-radius:50%; background:radial-gradient(circle at 40% 35%,#ffd27a,var(--amber-hot));
        box-shadow:0 0 0 2px rgba(16,14,10,.7),0 0 12px rgba(255,140,26,.5)}
 .ant.hidden{display:none}
+.trim{margin-top:12px; padding:9px 11px; border:1px solid var(--line); border-radius:12px;
+      background:var(--panel); display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+      justify-content:center}
+.trim.hidden{display:none}
+.trim>.lbl{color:var(--amber)}
+.trim-ax{display:flex; align-items:center; gap:7px}
+.trim-ax b{font-size:15px; min-width:56px; text-align:center}
+.btn.tb{min-height:36px; width:auto; min-width:42px; padding:6px 12px; flex-direction:row;
+        border-radius:9px; font-size:17px}
+.btn.tb.save{font-size:11px; letter-spacing:.14em; border-color:var(--amber); color:var(--amber)}
 
 /* reconnect scrim */
 #recon{position:absolute; left:50%; bottom:calc(env(safe-area-inset-bottom) + 14px);
@@ -278,6 +288,19 @@ body{
     <div class="pads" id="pads"></div>
     <div class="lb-row" id="lbRow"></div>
 
+    <div class="trim hidden" id="trim">
+      <span class="lbl">IMU trim</span>
+      <div class="trim-ax"><span class="lbl">pitch</span>
+        <button class="btn tb" id="trimPitchDn" aria-label="pitch down">−</button>
+        <b class="num" id="trimPitch">--</b><span class="lbl">°</span>
+        <button class="btn tb" id="trimPitchUp" aria-label="pitch up">+</button></div>
+      <div class="trim-ax"><span class="lbl">roll</span>
+        <button class="btn tb" id="trimRollDn" aria-label="roll down">−</button>
+        <b class="num" id="trimRoll">--</b><span class="lbl">°</span>
+        <button class="btn tb" id="trimRollUp" aria-label="roll up">+</button></div>
+      <button class="btn tb save" id="trimSave">SAVE</button>
+    </div>
+
     <div class="ant" id="ant">
       <div class="slot">
         <div class="hd"><span class="lbl">Antenna L</span><b id="antLv" class="num">0</b></div>
@@ -297,6 +320,7 @@ body{
 /* ---------- tunables (top-of-file) ---------- */
 const POLL_MS=250;          // /api/state poll — ~4 Hz
 const COMMAND_MS=100;       // /api/command while a stick is held — ~10 Hz
+const TRIM_STEP=0.002;      // rad per IMU-trim +/- press (matches the gamepad step)
 const CONN_TIMEOUT_MS=1000; // no state in this long -> "reconnecting"
 const RECORD_HOLD_MS=3000;  // DPAD-left hold-to-record visual ring
 const FETCH_TIMEOUT_MS=1500;
@@ -449,6 +473,17 @@ function poll(){
     lastOk=performance.now(); render(s);
   }).catch(()=>{}).finally(()=>clearTimeout(t));
 }
+/* IMU-trim card: nudge +/- (radians) and Save. Wired once (static markup). */
+function wireTrim(){
+  const nudge=(axis,delta)=>{ post("/api/trim",{axis,delta}); buzz(8); };
+  $("trimPitchUp").addEventListener("click",()=>nudge("pitch",TRIM_STEP));
+  $("trimPitchDn").addEventListener("click",()=>nudge("pitch",-TRIM_STEP));
+  $("trimRollUp").addEventListener("click",()=>nudge("roll",TRIM_STEP));
+  $("trimRollDn").addEventListener("click",()=>nudge("roll",-TRIM_STEP));
+  $("trimSave").addEventListener("click",()=>{ post("/api/trim",{action:"save"}); buzz(20); });
+}
+wireTrim();
+
 setInterval(poll,POLL_MS); poll();
 
 /* connection watchdog — drives the link light independent of the poll */
@@ -524,6 +559,14 @@ function render(s){
   if(s.mode==="head_puppet") setActive("btnUp", f.tracking);
   const g=$("gait"); if(g && s.gait_offset!=null) g.textContent=(s.gait_offset>=0?"+":"")+s.gait_offset.toFixed(2);
   $("ant").classList.toggle("hidden", feat.antennas===false);
+
+  // IMU trim card: walk-mode only; show live values in degrees
+  $("trim").classList.toggle("hidden", s.mode==="head_puppet");
+  const tr=s.imu_trim, DEG=180/Math.PI;
+  if(tr && tr.pitch!=null){
+    $("trimPitch").textContent=(tr.pitch>=0?"+":"")+(tr.pitch*DEG).toFixed(2);
+    $("trimRoll").textContent =(tr.roll>=0?"+":"")+(tr.roll*DEG).toFixed(2);
+  }
 }
 function setActive(id,on){ const e=$(id); if(e) e.classList.toggle("active",!!on); }
 function setFeat(id,on){ const e=$(id); if(e){ e.classList.toggle("disabled",!on); if(!on) e.setAttribute("aria-disabled","true"); } }

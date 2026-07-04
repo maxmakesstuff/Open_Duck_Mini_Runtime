@@ -39,6 +39,11 @@ HOME_DIR = os.path.expanduser("~")
 WALK_RECORD_HOLD_S = 3.0
 WALK_RECORDING_PATH = os.path.join(os.getcwd(), "walk_recording.pkl")
 
+# Live IMU-trim tuner (RB + D-pad, or the web card): step per nudge and the hard
+# clamp so a stuck input can't drive the trim to a dangerous angle.
+TRIM_STEP = 0.002     # rad (~0.11 deg) per D-pad tap / web +/- press
+TRIM_LIMIT = 0.1      # rad (~5.7 deg) max |trim| on either axis
+
 
 def _accel_pitch_roll(accel):
     """Best-effort pitch/roll (deg) from the accelerometer gravity vector, for the
@@ -345,6 +350,31 @@ class RLWalk:
             return raw_commands
         return raw_commands
 
+    def _nudge_trim(self, axis, delta):
+        """Adjust the LIVE IMU mounting trim (the worker re-reads it every loop, so
+        this applies instantly). Clamped to +/-TRIM_LIMIT so a stuck button can't
+        drive it wild. Not persisted until _save_imu_trim()."""
+        if axis == "pitch":
+            self.imu.pitch_trim = float(np.clip(self.imu.pitch_trim + delta,
+                                                -TRIM_LIMIT, TRIM_LIMIT))
+            val = self.imu.pitch_trim
+        elif axis == "roll":
+            self.imu.roll_trim = float(np.clip(self.imu.roll_trim + delta,
+                                               -TRIM_LIMIT, TRIM_LIMIT))
+            val = self.imu.roll_trim
+        else:
+            return
+        print(f"[trim] {axis} = {val:+.4f} rad ({math.degrees(val):+.2f} deg)  "
+              f"(RB+Y or web Save to persist)")
+
+    def _save_imu_trim(self):
+        """Persist the current live trim to ~/duck_config.json (backup-first, other
+        fields untouched)."""
+        from mini_bdx_runtime.duck_config import save_config_fields
+        trim = {"pitch": float(self.imu.pitch_trim), "roll": float(self.imu.roll_trim)}
+        backup = save_config_fields({"imu_trim": trim})
+        print(f"[trim] SAVED imu_trim={trim} (backup {backup})")
+
     def _publish_telemetry(self, now):
         if self.web_bus is None or build_state is None:
             return
@@ -367,6 +397,8 @@ class RLWalk:
             sounds=self._sound_names, uptime_s=now - self._start_t,
             imu=_accel_pitch_roll(self._last_imu.get("accelero") if self._last_imu else None),
             gait_offset=self.phase_frequency_factor_offset,
+            imu_trim={"pitch": float(self.imu.pitch_trim),
+                      "roll": float(self.imu.roll_trim)},
         ))
 
     def get_obs(self):
@@ -474,17 +506,32 @@ class RLWalk:
                     )
                     raw_commands = list(raw_commands)
 
-                    if self.buttons.dpad_up.triggered:
-                        self.phase_frequency_factor_offset += 0.05
-                        print(
-                            f"Phase frequency factor offset {round(self.phase_frequency_factor_offset, 3)}"
-                        )
-
-                    if self.buttons.dpad_down.triggered:
-                        self.phase_frequency_factor_offset -= 0.05
-                        print(
-                            f"Phase frequency factor offset {round(self.phase_frequency_factor_offset, 3)}"
-                        )
+                    # RB = IMU-trim modifier. While held, the D-pad tunes the trim
+                    # (up/down = pitch, right/left = roll) and Y saves it; gait and
+                    # record/playback are suppressed so nothing double-fires.
+                    trim_mode = self.buttons.RB.is_pressed
+                    if trim_mode:
+                        if self.buttons.dpad_up.triggered:
+                            self._nudge_trim("pitch", TRIM_STEP)
+                        if self.buttons.dpad_down.triggered:
+                            self._nudge_trim("pitch", -TRIM_STEP)
+                        if self.buttons.dpad_right.triggered:
+                            self._nudge_trim("roll", TRIM_STEP)
+                        if self.buttons.dpad_left.triggered:
+                            self._nudge_trim("roll", -TRIM_STEP)
+                        if self.buttons.Y.triggered:
+                            self._save_imu_trim()
+                    else:
+                        if self.buttons.dpad_up.triggered:
+                            self.phase_frequency_factor_offset += 0.05
+                            print(
+                                f"Phase frequency factor offset {round(self.phase_frequency_factor_offset, 3)}"
+                            )
+                        if self.buttons.dpad_down.triggered:
+                            self.phase_frequency_factor_offset -= 0.05
+                            print(
+                                f"Phase frequency factor offset {round(self.phase_frequency_factor_offset, 3)}"
+                            )
 
                     sprint = self.buttons.LB.is_pressed
                     self.phase_frequency_factor = 1.3 if sprint else 1.0
@@ -509,8 +556,21 @@ class RLWalk:
                             print("UNPAUSE")
                             self.fall_detector.reset(t)  # re-arm after righting
 
-                    # whole-body record / playback (DPAD left/right)
-                    self._handle_record_playback(raw_commands, t)
+                    # whole-body record / playback (DPAD left/right) -- suppressed
+                    # while RB (trim mode) borrows the D-pad.
+                    if not trim_mode:
+                        self._handle_record_playback(raw_commands, t)
+
+                # web IMU-trim tuner (drains alongside the gamepad; both nudge the
+                # SAME live IMU trim and the same save path)
+                if self.web_bus is not None:
+                    pd, rd, save_trim = self.web_bus.consume_trim()
+                    if pd:
+                        self._nudge_trim("pitch", pd)
+                    if rd:
+                        self._nudge_trim("roll", rd)
+                    if save_trim:
+                        self._save_imu_trim()
 
                 # scanner sound follows the LED even while paused; publish telemetry
                 self._couple_scanner(t)

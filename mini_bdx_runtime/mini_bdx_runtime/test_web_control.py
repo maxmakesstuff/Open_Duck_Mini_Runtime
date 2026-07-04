@@ -75,6 +75,29 @@ def test_button_hold_down_up():
     assert bus.consume_buttons()["LB"] is False
 
 
+def test_trim_nudge_routes_to_bus():
+    bus = ControlBus()
+    body = json.dumps({"axis": "pitch", "delta": 0.002}).encode()
+    status, ct, resp = handle_api("POST", "/api/trim", body, bus, 0.0)
+    assert status == 200 and json.loads(resp)["ok"] is True
+    assert bus.consume_trim() == (0.002, 0.0, False)
+
+
+def test_trim_save_routes_to_bus():
+    bus = ControlBus()
+    body = json.dumps({"action": "save"}).encode()
+    status, ct, resp = handle_api("POST", "/api/trim", body, bus, 0.0)
+    assert status == 200 and json.loads(resp)["ok"] is True
+    assert bus.consume_trim() == (0.0, 0.0, True)
+
+
+def test_trim_bad_axis_400():
+    bus = ControlBus()
+    body = json.dumps({"axis": "yaw", "delta": 0.002}).encode()
+    status, ct, resp = handle_api("POST", "/api/trim", body, bus, 0.0)
+    assert status == 400 and json.loads(resp)["ok"] is False
+
+
 def test_unknown_api_404():
     bus = ControlBus()
     status, ct, body = handle_api("GET", "/api/nope", b"", bus, 0.0)

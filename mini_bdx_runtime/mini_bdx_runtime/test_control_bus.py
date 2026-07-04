@@ -68,6 +68,30 @@ def test_unknown_button_ignored():
         assert bus.consume_buttons()[b] is False
 
 
+def test_trim_accumulates_and_consume_resets():
+    bus = ControlBus()
+    bus.push_trim("pitch", 0.002)
+    bus.push_trim("pitch", 0.002)
+    bus.push_trim("roll", -0.001)
+    p, r, save = bus.consume_trim()
+    assert abs(p - 0.004) < 1e-9 and abs(r - (-0.001)) < 1e-9 and save is False
+    # consuming again yields nothing (reset)
+    assert bus.consume_trim() == (0.0, 0.0, False)
+
+
+def test_trim_save_flag_one_shot():
+    bus = ControlBus()
+    bus.push_trim_save()
+    assert bus.consume_trim() == (0.0, 0.0, True)
+    assert bus.consume_trim() == (0.0, 0.0, False)
+
+
+def test_trim_unknown_axis_ignored():
+    bus = ControlBus()
+    assert bus.push_trim("yaw", 0.01) is False
+    assert bus.consume_trim() == (0.0, 0.0, False)
+
+
 def test_telemetry_roundtrip_is_copied():
     bus = ControlBus()
     snap = {"mode": "walk", "paused": False}

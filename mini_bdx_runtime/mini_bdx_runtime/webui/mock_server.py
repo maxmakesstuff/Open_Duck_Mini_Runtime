@@ -27,6 +27,7 @@ FLAGS = {"projector_on": False, "head_control": False, "sprint": False, "trackin
 REC = {"state": "idle", "frames": 0, "seconds": 0.0, "t0": 0.0}
 PAUSED = {"v": False}
 GAIT = {"v": 0.0}
+TRIM = {"pitch": 0.0, "roll": 0.0}   # radians; nudged by /api/trim
 FORCE_MODE = None  # set from --mode
 
 
@@ -66,6 +67,7 @@ def build_state():
         "paused": PAUSED["v"],
         "battery": {"voltage": round(volt, 2), "percent": pct, "charging": charging},
         "imu": {"pitch": round(pitch, 1), "roll": round(roll, 1)},
+        "imu_trim": {"pitch": round(TRIM["pitch"], 4), "roll": round(TRIM["roll"], 4)},
         "loop_hz": round(49.6 + 0.3 * math.sin(t * 3), 1),
         "temp_c": round(38 + 6 * (0.5 + 0.5 * math.sin(t * 0.15)), 1),
         "fallen": fallen,
@@ -141,6 +143,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/button":
             handle_button(body)
             print("BUTTON", body)
+        elif path == "/api/trim":
+            if body.get("action") == "save":
+                print("TRIM save", TRIM)
+            else:
+                ax = body.get("axis")
+                if ax in TRIM:
+                    TRIM[ax] = clamp(TRIM[ax] + float(body.get("delta", 0.0)), -0.1, 0.1)
+                print("TRIM", TRIM)
         elif path == "/api/command":
             if body.get("active"):
                 print("COMMAND", {k: body.get(k) for k in
