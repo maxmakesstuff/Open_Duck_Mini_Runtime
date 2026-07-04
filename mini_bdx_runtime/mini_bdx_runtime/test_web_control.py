@@ -5,7 +5,21 @@ Run:  python3 test_web_control.py
 """
 import json
 from control_bus import ControlBus
-from web_control import handle_api
+from web_control import handle_api, captive_target
+
+PORTAL = "http://10.42.0.1:8080/"
+
+
+def test_captive_serves_app_routes():
+    for p in ("/", "/index.html", "/healthz", "/favicon.ico",
+              "/api/state", "/api/command"):
+        assert captive_target(p, PORTAL) is None, f"{p} should serve normally"
+
+
+def test_captive_redirects_probes_and_stray_urls():
+    for p in ("/hotspot-detect.html", "/generate_204", "/connecttest.txt",
+              "/success.txt", "/ncsi.txt", "/anything", "/l/v1/foo"):
+        assert captive_target(p, PORTAL) == PORTAL, f"{p} should redirect to portal"
 
 
 def test_non_api_returns_none():

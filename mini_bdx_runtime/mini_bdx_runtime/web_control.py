@@ -70,6 +70,21 @@ def handle_api(method, path, body_bytes, bus, now):
     return 404, "application/json", _json_bytes({"ok": False, "error": "not found"})
 
 
+# GET paths the server owns. Any OTHER path is treated as a captive-portal probe
+# (iOS /hotspot-detect.html, Android /generate_204, Windows /connecttest.txt, or
+# any stray http URL a client opens) and 302-redirected to the control page, so
+# joining the duck's Wi-Fi pops the UI up automatically.
+_APP_GET_PATHS = ("/", "/index.html", "/healthz", "/favicon.ico")
+
+
+def captive_target(path, portal_url):
+    """Return None if `path` is an app route the server should serve normally,
+    else the portal URL to redirect to. Pure -> unit-tested off-robot."""
+    if path.startswith("/api/") or path in _APP_GET_PATHS:
+        return None
+    return portal_url
+
+
 def _read_index():
     path = os.path.join(WEBUI_DIR, "index.html")
     try:
@@ -106,7 +121,7 @@ def get_lan_ip():
     return "127.0.0.1"
 
 
-def _make_handler(bus, clock):
+def _make_handler(bus, clock, portal_url):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -126,6 +141,12 @@ def _make_handler(bus, clock):
             except (BrokenPipeError, ConnectionResetError):
                 pass
 
+        def _redirect(self, location):
+            body = (f'<html><head><meta http-equiv="refresh" content="0; url={location}">'
+                    f'</head><body><a href="{location}">Open Duck control</a></body></html>'
+                    ).encode()
+            self._send(302, "text/html; charset=utf-8", body, extra={"Location": location})
+
         def do_GET(self):
             path = self.path.split("?", 1)[0]
             if path.startswith("/api/"):
@@ -142,7 +163,8 @@ def _make_handler(bus, clock):
             if path == "/favicon.ico":       # avoid a noisy 404 per page load
                 self._send(204, "image/x-icon", b"")
                 return
-            self._send(404, "text/plain", b"not found")
+            # Captive portal: every other GET is a portal probe / stray URL.
+            self._redirect(portal_url)
 
         def do_POST(self):
             path = self.path.split("?", 1)[0]
@@ -171,14 +193,14 @@ class WebControlServer:
         self._thread = None
 
     def start(self):
-        handler = _make_handler(self.bus, self._clock)
+        portal_url = f"http://{get_lan_ip()}:{self.port}/"
+        handler = _make_handler(self.bus, self._clock, portal_url)
         self._httpd = ThreadingHTTPServer((self.host, self.port), handler)
         self._httpd.daemon_threads = True
         self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
         self._thread.start()
-        url = f"http://{get_lan_ip()}:{self.port}"
-        print(f"[web] control UI at {url}  (also http://<robot>.local:{self.port})")
-        return url
+        print(f"[web] control UI at {portal_url}  (also http://<robot>.local:{self.port}/)")
+        return portal_url
 
     def stop(self):
         if self._httpd is not None:
