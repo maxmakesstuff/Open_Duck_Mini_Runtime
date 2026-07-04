@@ -1,13 +1,19 @@
 #!/bin/bash
 #
-# Push the overnight dev suite to the duck (head-puppet + WALK + Web UI + all the
-# new runtime modules). Existing files are backed up once on the duck as
-# <file>.orig before being overwritten (re-running keeps that first backup), so
-# you always have a way back ON the duck too; brand-new files are just created
-# (revert = delete). The list + revert hint at the end are generated from FILES.
+# Push ALL runtime code to a duck: walk + head-puppet + Web UI + every runtime
+# module, plus the ops kits (captive-portal, Xbox auto-reconnect). Existing files
+# are backed up once on the duck as <file>.orig before being overwritten (re-running
+# keeps that first backup), so you always have a way back ON the duck too; brand-new
+# files are just created (revert = delete). List + revert hint are built from FILES.
 #
-# NOTE: for a DIFFERENT duck, edit REMOTE_HOST/REMOTE_USER/REMOTE_ROOT below.
-# This does NOT touch ~/duck_config.json (per-robot: offsets + feature flags).
+# This is also the SECOND-DUCK deploy: it copies all code identically; the per-robot
+# CALIBRATION + system setup that it can't ship is printed as an ordered checklist at
+# the end (motor offsets, IMU trim, walk tuning, captive portal, reboot).
+#
+# NOTE: for a DIFFERENT hostname/user, edit REMOTE_HOST/REMOTE_USER/REMOTE_ROOT below
+# (an identical clone needs no edit — just join that duck's Wi-Fi and run this).
+# This deliberately does NOT touch ~/duck_config.json (per-robot: offsets, IMU trim,
+# feature flags) — use scripts/apply_stability_defaults.py to seed the walk tuning.
 #
 # Just double-click this file (it lives in the repo root).
 
@@ -37,6 +43,8 @@ FILES=(
   "scripts/find_soft_offsets.py|scripts"
   "scripts/calibrate_imu.py|scripts"
   "scripts/imu_health_check.py|scripts"
+  "scripts/apply_stability_defaults.py|scripts"
+  "scripts/gamepad_probe.py|scripts"
   # --- runtime library (mini_bdx_runtime package) ---
   "mini_bdx_runtime/mini_bdx_runtime/xbox_controller.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/buttons.py|mini_bdx_runtime/mini_bdx_runtime"
@@ -66,6 +74,12 @@ FILES=(
   "ops/bluetooth/duck-pad-reconnect.sh|ops/bluetooth"
   "ops/bluetooth/duck-pad-reconnect.service|ops/bluetooth"
   "ops/bluetooth/install-xpadneo.md|ops/bluetooth"
+  # --- Captive portal (phone joins the duck Wi-Fi -> control UI; run setup on the Pi) ---
+  "ops/captive-portal/README.md|ops/captive-portal"
+  "ops/captive-portal/setup-captive-portal.sh|ops/captive-portal"
+  "ops/captive-portal/duck-captive.nft|ops/captive-portal"
+  "ops/captive-portal/90-duck-captive|ops/captive-portal"
+  "ops/captive-portal/dnsmasq-captive.conf|ops/captive-portal"
 )
 
 echo "================================================="
@@ -129,12 +143,35 @@ ssh "${SSH_OPTS[@]}" -O exit "${REMOTE_USER}@${REMOTE_HOST}" 2>/dev/null || true
 echo "================================================="
 echo " Done. ${#MODIFIED_FILES[@]} updated, ${#NEW_FILES[@]} new."
 echo
-echo " Per-robot setup still needed (NOT shipped by this script):"
-echo "   • ~/duck_config.json: set expression_features camera/speaker/antennas/"
-echo "     projector as desired; web UI is on by default (\"web_ui\": false to"
-echo "     disable, \"web_port\": 8080). Battery mapping under \"battery\"."
-echo "   • Web UI needs no extra deps (stdlib). Face tracking needs cv2 in the venv."
-echo "   • Xbox auto-reconnect: run ops/bluetooth/setup-bluetooth-reconnect.sh on the Pi."
+cat <<'EOF'
+ New / second-duck bring-up — per-robot, in THIS order (NOT auto-shipped, because
+ each robot needs its OWN calibration; the code above is now identical to the ref):
+
+   1. First time only: install the package in the venv:
+        cd ~/Open_Duck_Mini_Runtime && pip install -e .
+        (Pi 5 also: pip uninstall -y RPi.GPIO && pip install lgpio)
+   2. Motors (skip if IDs already set): python scripts/configure_all_motors.py
+        (a brand-new servo first: python scripts/configure_motor.py --id <n>)
+   3. Zero offsets:  python scripts/find_soft_offsets.py    (writes joints_offsets)
+   4. IMU:           python scripts/calibrate_imu.py
+                     python scripts/imu_health_check.py      (writes imu_trim; set
+                     "imu_upside_down": true if the BNO055 is mounted inverted)
+   5. Walk tuning (known-good starting points -- RE-TUNE per robot):
+                     python scripts/apply_stability_defaults.py
+   6. Features: edit ~/duck_config.json "expression_features"
+                (camera/speaker/antennas/projector). Web UI on by default
+                ("web_ui": false to disable, "web_port": 8080). Battery under
+                "battery". Face tracking needs cv2 in the venv.
+   7. Phone captive portal (join Wi-Fi -> control UI, stays connected):
+                     sudo bash ops/captive-portal/setup-captive-portal.sh
+                     sudo reboot         # activates the DNS half
+   8. Xbox auto-reconnect (optional):
+                     bash ops/bluetooth/setup-bluetooth-reconnect.sh
+
+ NOTE: for a DIFFERENT hostname/user, edit REMOTE_* at the top. If the second duck
+ is an identical clone (user bdxv2, host bdxv2.local), just connect your Mac to
+ ITS Wi-Fi and re-run this script -- it targets whichever duck you're joined to.
+EOF
 echo
 echo " To REVERT on the duck:"
 if [ "${#MODIFIED_FILES[@]}" -gt 0 ]; then
