@@ -7,7 +7,18 @@ docs/webui-api.md). Servo voltage/temperature reads go over the single-owner
 serial bus, so BatteryMonitor throttles them to a few seconds apart — negligible
 next to the per-tick position reads the loop already does.
 """
-from battery import estimate_percent, ChargeEstimator, DEFAULT_V_MIN, DEFAULT_V_MAX, DEFAULT_V_FULL
+# Absolute-package import is how the runtime loads this (mini_bdx_runtime.telemetry);
+# the flat fallback is for the off-robot standalone tests that run from this dir.
+try:
+    from mini_bdx_runtime.battery import (
+        estimate_percent, ChargeEstimator,
+        DEFAULT_V_MIN, DEFAULT_V_MAX, DEFAULT_V_FULL,
+    )
+except ImportError:
+    from battery import (
+        estimate_percent, ChargeEstimator,
+        DEFAULT_V_MIN, DEFAULT_V_MAX, DEFAULT_V_FULL,
+    )
 
 
 class BatteryMonitor:
