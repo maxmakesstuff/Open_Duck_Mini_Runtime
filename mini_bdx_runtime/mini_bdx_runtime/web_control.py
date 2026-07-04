@@ -80,15 +80,30 @@ def _read_index():
 
 
 def get_lan_ip():
-    """Best-effort LAN IP for printing the phone URL (no traffic actually sent)."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    """Best-effort LAN IP for printing the phone URL (no traffic actually sent).
+
+    The UDP-connect trick fails to find a route on an access-point-only setup
+    (the duck is often its own AP at 10.42.0.1), so we try a few targets and then
+    fall back to `hostname -I`, skipping loopback."""
+    for target in ("10.255.255.255", "192.168.255.255", "8.8.8.8"):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect((target, 1))
+            ip = s.getsockname()[0]
+            if ip and not ip.startswith("127."):
+                return ip
+        except OSError:
+            pass
+        finally:
+            s.close()
     try:
-        s.connect(("10.255.255.255", 1))
-        return s.getsockname()[0]
-    except OSError:
-        return "127.0.0.1"
-    finally:
-        s.close()
+        import subprocess
+        for ip in subprocess.check_output(["hostname", "-I"], text=True).split():
+            if ip and not ip.startswith("127.") and ":" not in ip:
+                return ip
+    except Exception:  # noqa: BLE001
+        pass
+    return "127.0.0.1"
 
 
 def _make_handler(bus, clock):
