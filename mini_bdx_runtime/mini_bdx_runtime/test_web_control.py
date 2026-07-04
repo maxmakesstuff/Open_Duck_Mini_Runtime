@@ -5,7 +5,7 @@ Run:  python3 test_web_control.py
 """
 import json
 from control_bus import ControlBus
-from web_control import handle_api, captive_target
+from web_control import handle_api, captive_target, captive_probe_response
 
 PORTAL = "http://10.42.0.1:8080/"
 
@@ -16,9 +16,24 @@ def test_captive_serves_app_routes():
         assert captive_target(p, PORTAL) is None, f"{p} should serve normally"
 
 
-def test_captive_redirects_probes_and_stray_urls():
-    for p in ("/hotspot-detect.html", "/generate_204", "/connecttest.txt",
-              "/success.txt", "/ncsi.txt", "/anything", "/l/v1/foo"):
+def test_os_probes_are_satisfied_not_redirected():
+    # iOS: must get 200 + the exact "Success" body so it stays connected (no popup).
+    st, ct, body = captive_probe_response("/hotspot-detect.html")
+    assert st == 200 and b"Success" in body and ct == "text/html"
+    # iOS also identifies itself by the CNA User-Agent even on an odd path.
+    assert captive_probe_response("/", user_agent="CaptiveNetworkSupport/1.0")[0] == 200
+    # ...and by Host when the path isn't the canonical one.
+    assert captive_probe_response("/x", host="captive.apple.com")[0] == 200
+    # Android expects 204 empty; Windows its own text.
+    assert captive_probe_response("/generate_204") == (204, "text/plain", b"")
+    assert captive_probe_response("/ncsi.txt")[0] == 200
+    assert captive_probe_response("/connecttest.txt")[0] == 200
+
+
+def test_stray_urls_are_not_probes_and_still_redirect():
+    # Genuine stray URLs aren't probes (-> None) so do_GET 302s them to the portal.
+    for p in ("/success.txt", "/anything", "/l/v1/foo", "/index.php"):
+        assert captive_probe_response(p) is None, f"{p} should not be treated as a probe"
         assert captive_target(p, PORTAL) == PORTAL, f"{p} should redirect to portal"
 
 

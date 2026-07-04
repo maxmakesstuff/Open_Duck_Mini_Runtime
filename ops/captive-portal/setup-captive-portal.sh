@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 #
-# Install the Open Duck captive portal: joining the duck's Wi-Fi pops up the
-# control UI (like public/coffee-shop wifi). Idempotent; run with sudo on the Pi.
+# Install the Open Duck captive portal: on the duck's Wi-Fi, opening any http URL
+# forwards you to the control UI (so you never type an IP). The web server answers
+# OS connectivity-check probes with "Success", so phones STAY connected instead of
+# showing the login-popup and dropping off when it's dismissed (iOS did exactly
+# that). Reach the UI at http://10.42.0.1/ (bookmark it). Idempotent; sudo on the Pi.
 #
 #   sudo bash setup-captive-portal.sh            # install (nft live now; DNS on reboot)
 #   sudo bash setup-captive-portal.sh --uninstall
@@ -12,10 +15,11 @@
 #   2) dispatcher.d/90-duck-captive     (re-applies the nft rule on every AP up)
 #   3) dnsmasq-shared.d/duck-captive.conf (captive-check domains -> the duck)
 #
-# The nft redirect + web-server 302 are LIVE immediately. The DNS-hijack half
-# (which makes the popup fire when the duck has NO internet) activates when the
-# AP's dnsmasq restarts — i.e. on the next reboot. We deliberately do NOT bounce
-# the AP here, because on an AP-only duck that would drop your SSH session.
+# The nft redirect + web-server responses are LIVE immediately. The DNS-hijack half
+# (which points the OS captive-check domains at the duck so the probe reaches us at
+# all when the duck has NO internet) activates when the AP's dnsmasq restarts — i.e.
+# on the next reboot. We deliberately do NOT bounce the AP here, because on an
+# AP-only duck that would drop your SSH session.
 
 set -euo pipefail
 
@@ -64,8 +68,14 @@ Done.
     the AP here so your SSH stays up). 'sudo reboot' when convenient.
 
 Quick test (with head-puppet or walk running so :8080 is up):
-  curl -s -I -H 'Host: captive.apple.com' http://10.42.0.1/hotspot-detect.html
+  # OS connectivity probe -> answered with "Success" so the phone STAYS connected
+  # (no forced captive popup, no disconnect-on-dismiss):
+  curl -s -H 'Host: captive.apple.com' http://10.42.0.1/hotspot-detect.html
+    -> expect: 200, body <HTML>...<TITLE>Success</TITLE>...</HTML>
+  # any other URL still 302s to the control page (open the browser, get forwarded):
+  curl -s -I http://10.42.0.1/anything
     -> expect: HTTP/1.1 302 Found, Location: http://10.42.0.1:8080/
+  Reach the UI from the phone: open http://10.42.0.1/ (bookmark it / Add to Home Screen).
 
 Uninstall: sudo bash setup-captive-portal.sh --uninstall
 EOF

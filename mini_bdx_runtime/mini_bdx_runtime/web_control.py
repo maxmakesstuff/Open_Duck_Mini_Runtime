@@ -99,6 +99,40 @@ def captive_target(path, portal_url):
     return portal_url
 
 
+# iOS/macOS look for EXACTLY this page (they match the "Success" body) to decide a
+# network has real internet. Return it verbatim, 200 OK, and iOS concludes there is
+# NO captive portal -> it never force-opens the CNA popup and STAYS connected.
+_APPLE_SUCCESS = b"<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>"
+
+
+def captive_probe_response(path, host="", user_agent=""):
+    """If this GET is a known OS connectivity-check probe, return the
+    (status, content_type, body) that SATISFIES it, so the device thinks the network
+    is online, doesn't force the captive popup, and stays connected. Return None for
+    anything else (the caller then serves the app route or 302s to the control page,
+    preserving the open-any-URL-and-get-forwarded behaviour). Pure -> unit-tested.
+
+    Matching on the probe PATH is the robust signal (the nft rule sends every AP
+    :80 request here regardless of Host); Host / User-Agent are belt-and-suspenders."""
+    host = (host or "").split(":")[0].lower()
+    ua = user_agent or ""
+    # iOS / macOS  (captive.apple.com/hotspot-detect.html, or the CNA agent's UA)
+    if (path in ("/hotspot-detect.html", "/library/test/success.html")
+            or host == "captive.apple.com"
+            or ua.startswith("CaptiveNetworkSupport")):
+        return 200, "text/html", _APPLE_SUCCESS
+    # Android  (expects HTTP 204, empty body)
+    if (path in ("/generate_204", "/gen_204")
+            or host in ("connectivitycheck.gstatic.com", "connectivitycheck.android.com")):
+        return 204, "text/plain", b""
+    # Windows
+    if path == "/ncsi.txt" or host == "www.msftncsi.com":
+        return 200, "text/plain", b"Microsoft NCSI"
+    if path == "/connecttest.txt" or host == "www.msftconnecttest.com":
+        return 200, "text/plain", b"Microsoft Connect Test"
+    return None
+
+
 def _read_index():
     path = os.path.join(WEBUI_DIR, "index.html")
     try:
@@ -177,7 +211,16 @@ def _make_handler(bus, clock, portal_url):
             if path == "/favicon.ico":       # avoid a noisy 404 per page load
                 self._send(204, "image/x-icon", b"")
                 return
-            # Captive portal: every other GET is a portal probe / stray URL.
+            # OS connectivity-check probe? Answer it so the phone believes the network
+            # is online: no forced captive popup, and it STAYS connected (fixes iOS
+            # dropping the Wi-Fi when you dismiss the popup).
+            probe = captive_probe_response(
+                path, self.headers.get("Host", ""), self.headers.get("User-Agent", ""))
+            if probe is not None:
+                self._send(*probe)
+                return
+            # Every other GET (a stray http URL the user opened) still 302s to the
+            # control page, so opening the browser forwards you without typing an IP.
             self._redirect(portal_url)
 
         def do_POST(self):
