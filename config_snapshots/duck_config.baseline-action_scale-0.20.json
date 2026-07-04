@@ -1,0 +1,41 @@
+{
+  "web_ui": true,
+  "web_port": 8080,
+  "battery": {
+    "v_min": 6.6,
+    "v_max": 8.4,
+    "v_full": 8.5
+  },
+  "start_paused": true,
+  "imu_upside_down": true,
+  "phase_frequency_factor_offset": -0.1,
+  "expression_features": {
+    "eyes": true,
+    "projector": true,
+    "antennas": true,
+    "speaker": true,
+    "microphone": false,
+    "camera": true
+  },
+  "joints_offsets": {
+    "left_hip_yaw": -0.075,
+    "left_hip_roll": 0.095,
+    "left_hip_pitch": 0.08399999999999999,
+    "left_knee": 0.124,
+    "left_ankle": -0.055,
+    "neck_pitch": 0.10400000000000001,
+    "head_pitch": -0.104,
+    "head_yaw": -0.117,
+    "head_roll": 0.011999999999999999,
+    "right_hip_yaw": 0.041,
+    "right_hip_roll": -0.027,
+    "right_hip_pitch": -0.08399999999999999,
+    "right_knee": 0.034,
+    "right_ankle": 0.017
+  },
+  "imu_trim": {
+    "pitch": 0.019500000000000003,
+    "roll": -0.028330867996293637
+  },
+  "action_scale": 0.2
+}
