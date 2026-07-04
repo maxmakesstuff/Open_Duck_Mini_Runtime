@@ -34,6 +34,7 @@ FILES=(
   "scripts/head_puppet.py|scripts"
   "scripts/v2_rl_walk_mujoco.py|scripts"
   "scripts/probe_battery.py|scripts"
+  "scripts/find_soft_offsets.py|scripts"
   # --- runtime library (mini_bdx_runtime package) ---
   "mini_bdx_runtime/mini_bdx_runtime/xbox_controller.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/buttons.py|mini_bdx_runtime/mini_bdx_runtime"
