@@ -45,6 +45,7 @@ FILES=(
   "scripts/imu_health_check.py|scripts"
   "scripts/apply_stability_defaults.py|scripts"
   "scripts/gamepad_probe.py|scripts"
+  "scripts/first_time_setup.py|scripts"
   # --- runtime library (mini_bdx_runtime package) ---
   "mini_bdx_runtime/mini_bdx_runtime/xbox_controller.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/buttons.py|mini_bdx_runtime/mini_bdx_runtime"
@@ -144,8 +145,13 @@ echo "================================================="
 echo " Done. ${#MODIFIED_FILES[@]} updated, ${#NEW_FILES[@]} new."
 echo
 cat <<'EOF'
- New / second-duck bring-up — per-robot, in THIS order (NOT auto-shipped, because
- each robot needs its OWN calibration; the code above is now identical to the ref):
+ New / second-duck bring-up — per-robot (the code above is now identical to the ref;
+ each robot still needs its OWN calibration, which is NOT auto-shipped).
+
+ >>> EASIEST: one guided command does everything below, every step skippable:
+       cd ~/Open_Duck_Mini_Runtime && python scripts/first_time_setup.py
+
+ Or do it by hand, in THIS order:
 
    1. First time only: install the package in the venv:
         cd ~/Open_Duck_Mini_Runtime && pip install -e .

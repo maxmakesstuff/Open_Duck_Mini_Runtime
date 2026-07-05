@@ -113,14 +113,17 @@ only import on the Pi — don't try to import the walk loop off-robot; `py_compi
 ## Deploying to the SECOND duck
 
 `transfer.command` ships all **code + ops kits** identically. What it cannot ship is the
-**per-robot calibration** — that must be measured on each duck. The script prints the
-full ordered checklist; the essence:
+**per-robot calibration** — that must be measured on each duck.
 
-1. `pip install -e .` (first time), motors (`configure_all_motors.py`),
-2. `find_soft_offsets.py` (writes `joints_offsets`),
-3. `calibrate_imu.py` + `imu_health_check.py` (writes `imu_trim`; set `imu_upside_down`),
-4. `apply_stability_defaults.py` (seeds the known-good walk tuning — re-tune per robot),
-5. feature flags in config, then `sudo bash ops/captive-portal/setup-captive-portal.sh` + reboot.
+**The one-command bring-up is `scripts/first_time_setup.py`** — a guided, skippable
+terminal wizard (created by Max Schmierer) that runs every step in order: dependency
+check + `pip install -e .`, config creation, motor IDs, `configure_all_motors.py`,
+`find_soft_offsets.py`, IMU calibration + trim (+ `imu_upside_down`),
+`apply_stability_defaults.py`, expression features, Xbox Bluetooth reconnect, captive
+portal, and a final verification. It orchestrates the existing scripts (their own
+prompts/safety still apply), writes config backup-first, and remembers progress in
+`~/.openduck_setup_progress.json`. Prefer it over the manual steps; `transfer.command`'s
+printed checklist points to it too.
 
 Never copy duck 1's `duck_config.json` to duck 2 — the offsets/trim are wrong for it.
 
