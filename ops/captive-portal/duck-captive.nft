@@ -1,0 +1,20 @@
+#!/usr/sbin/nft -f
+#
+# Open Duck captive-portal port-80 redirect.
+#
+# Sends all HTTP (tcp/80) arriving on the AP interface to the local control web
+# server on :8080 (a non-root process can't bind :80 itself). Lives in its OWN
+# table ("duckcaptive") so it never disturbs NetworkManager's shared-mode NAT
+# (masquerade / forward) rules. The add+delete+recreate makes re-applying fully
+# idempotent. Does NOT touch SSH (tcp/22) or any other port.
+#
+# To change the AP interface or web port, edit the two literals below.
+
+add table ip duckcaptive
+delete table ip duckcaptive
+table ip duckcaptive {
+    chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+        iifname "wlan0" tcp dport 80 redirect to :8080
+    }
+}

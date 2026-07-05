@@ -145,6 +145,45 @@ class HWI:
         ]
         return np.array(np.around(present_positions, 3))
 
+    # STS3215 present-voltage register is in 0.1 V units (see check_voltage.py).
+    # If a future rustypot build already returns volts, set this to 1.0 (the
+    # probe_battery.py script makes the right value obvious on-robot).
+    VOLTAGE_SCALE = 0.1
+
+    def get_present_voltage(self):
+        """Mean bus voltage (V) read through the SAME rustypot connection the loop
+        already owns (the serial bus is single-owner — no second connection). Best
+        effort: returns None if this rustypot build doesn't expose the register, so
+        telemetry degrades to 'n/a' instead of crashing the loop."""
+        reader = getattr(self.io, "read_present_voltage", None)
+        if reader is None:
+            return None
+        try:
+            vals = reader(list(self.joints.values()))
+        except Exception as e:  # noqa: BLE001
+            print(f"[hwi] voltage read failed: {e}")
+            return None
+        vals = [float(v) * self.VOLTAGE_SCALE for v in vals if v is not None]
+        if not vals:
+            return None
+        return round(sum(vals) / len(vals), 2)
+
+    def get_present_temperature(self):
+        """Hottest servo temperature (°C), or None if unavailable. Same guarded,
+        single-connection approach as get_present_voltage."""
+        reader = getattr(self.io, "read_present_temperature", None)
+        if reader is None:
+            return None
+        try:
+            vals = reader(list(self.joints.values()))
+        except Exception as e:  # noqa: BLE001
+            print(f"[hwi] temperature read failed: {e}")
+            return None
+        vals = [float(v) for v in vals if v is not None]
+        if not vals:
+            return None
+        return round(max(vals), 1)
+
     def get_present_velocities(self, rad_s=True, ignore=[]):
         """
         Returns the present velocities in rad/s (default) or rev/min

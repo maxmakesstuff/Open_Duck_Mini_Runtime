@@ -1,0 +1,29 @@
+[Unit]
+Description=Open Duck Mini: keep the trusted Xbox controller connected (auto-reconnect watchdog)
+Documentation=file:///home/bdxv2/Open_Duck_Mini_Runtime/ops/bluetooth/README.md
+# We need BlueZ up before we start poking the adapter.
+Requires=bluetooth.service
+After=bluetooth.service network.target
+# If bluetooth restarts, restart us too so we re-acquire the agent/adapter.
+PartOf=bluetooth.service
+
+[Service]
+Type=simple
+# PAD_MAC is written here by setup-bluetooth-reconnect.sh. Optional overrides:
+#   POLL_INTERVAL, BACKOFF_MIN, BACKOFF_MAX
+EnvironmentFile=-/etc/default/duck-pad-reconnect
+ExecStart=/usr/local/bin/duck-pad-reconnect.sh
+Restart=always
+RestartSec=5
+# Don't spin forever if it's misconfigured (e.g. missing PAD_MAC exits 2).
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+# Light hardening -- this only runs bluetoothctl.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

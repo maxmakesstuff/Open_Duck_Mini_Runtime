@@ -2,6 +2,13 @@
     "start_paused": false,
     "imu_upside_down": false,
     "phase_frequency_factor_offset": 0.0,
+    "web_ui": true,
+    "web_port": 8080,
+    "battery": {
+        "v_min": 6.6,
+        "v_max": 8.4,
+        "v_full": 8.5
+    },
     "expression_features": {
         "eyes": false,
         "projector": false,

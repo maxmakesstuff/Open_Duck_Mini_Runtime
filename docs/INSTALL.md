@@ -5,6 +5,9 @@ A ready‑to‑flash Raspberry Pi image to get your Duck up and walking in minut
 > This is currently only confirmed working on the Raspberry Pi Zero from the BOM
 > **Important:** This approach assumes you followed the **original build tutorial** for the unmodified Duck in this repo. Hardware and wiring must match the reference build for everything to work as intended.
 > **Very Important:** You will still have to configure the motor offsets and calibrate the IMU, also see the section below at „Must-Run Setup Scripts“, this will not work automatically!
+
+This explains how you can find the motor offsets: 
+
 > If you wish to create your own release based on your self-configured Linux copy, please follow the tutorial in the duck_release_creation_tutorial.md file
 
 ---
