@@ -15,7 +15,9 @@ import argparse
 import json
 import math
 import os
+import struct
 import time
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -29,6 +31,51 @@ PAUSED = {"v": False}
 GAIT = {"v": 0.0}
 TRIM = {"pitch": 0.0, "roll": 0.0}   # radians; nudged by /api/trim
 FORCE_MODE = None  # set from --mode
+
+# live-tunable mocks, mutated by /api/setting so the TUNE panel round-trips
+WALK = {"action_scale": 0.23, "action_scale_target": 0.23, "velocity_clip": True,
+        "max_motor_velocity_rad_s": 5.24,
+        "governor": {"enabled": True, "tilt_lo_deg": 8.0, "tilt_hi_deg": 22.0,
+                     "rate_lo": 1.5, "rate_hi": 5.0, "floor": 0.2, "smooth": 0.3}}
+CAM = {"ae": True, "awb": True, "exposure": 10000, "gain": 1.0, "brightness": 0.0,
+       "contrast": 1.0, "saturation": 1.0, "sharpness": 1.0}
+ANT = {"free_anim": True}
+
+
+def _png(w, h, pix):
+    """Minimal RGB PNG encoder (stdlib only) for the fake camera preview. The UI's
+    <img> renders by Content-Type, so a PNG stands in fine for the robot's JPEG."""
+    raw = bytearray()
+    for y in range(h):
+        raw.append(0)  # filter type 0
+        for x in range(w):
+            r, g, b = pix(x, y)
+            raw += bytes((r & 255, g & 255, b & 255))
+
+    def chunk(typ, data):
+        c = typ + data
+        return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c) & 0xffffffff)
+
+    ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr)
+            + chunk(b"IDAT", zlib.compress(bytes(raw), 6)) + chunk(b"IEND", b""))
+
+
+def _camera_frame():
+    """A moving test pattern tinted by the current mock camera controls."""
+    t = time.time() - START
+    bright = CAM["brightness"]
+    gain = CAM["gain"]
+
+    def pix(x, y):
+        base = int((x + y) / 240.0 * 255)
+        band = int(127 + 127 * math.sin(x * 0.06 + t * 3))
+        r = clamp(int((band + bright * 120) * (gain / 2)), 0, 255)
+        g = clamp(int((base + bright * 120)), 0, 255)
+        b = clamp(int((255 - base)), 0, 255)
+        return (r, g, b)
+
+    return _png(120, 120, pix)
 
 
 def _mode(t):
@@ -81,6 +128,14 @@ def build_state():
         "features": {"antennas": True, "projector": True, "speaker": True, "camera": True},
         "flags": dict(FLAGS),
         "gait_offset": round(GAIT["v"], 2),
+        "walk_params": {
+            **{k: WALK[k] for k in ("action_scale", "action_scale_target",
+                                    "velocity_clip", "max_motor_velocity_rad_s")},
+            "gait_offset": round(GAIT["v"], 3),
+            "governor": dict(WALK["governor"]),
+        },
+        "camera": {"available": True, "controls": dict(CAM)},
+        "antenna_anim": ANT["free_anim"],
         "sounds": ["beep1.wav", "happy1.wav", "sad1.wav", "quack.wav"],
         "uptime_s": round(t, 1),
         "message": "mock server — no hardware attached",
@@ -115,6 +170,29 @@ def handle_button(b):
         REC["state"] = "idle" if REC["state"] == "playing" else "playing"
 
 
+def handle_setting(body):
+    group = body.get("group")
+    if body.get("action") == "save":
+        print("SETTING save", group)
+        return
+    key, val = body.get("key"), body.get("value")
+    if group == "walk":
+        if key == "gait_offset":
+            GAIT["v"] = float(val)
+        elif key == "action_scale":
+            WALK["action_scale_target"] = WALK["action_scale"] = float(val)
+        elif key.startswith("governor_"):
+            gk = key[len("governor_"):]
+            WALK["governor"][gk] = bool(val) if gk == "enabled" else float(val)
+        elif key in WALK:
+            WALK[key] = val
+    elif group == "camera" and key in CAM:
+        CAM[key] = val
+    elif group == "antenna" and key == "free_anim":
+        ANT["free_anim"] = bool(val)
+    print("SETTING", group, key, val)
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="application/json"):
         data = body.encode("utf-8") if isinstance(body, str) else body
@@ -135,6 +213,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, "index.html not found next to mock_server.py", "text/plain")
         elif path == "/api/state":
             self._send(200, json.dumps(build_state()))
+        elif path == "/api/camera/frame.jpg":
+            self._send(200, _camera_frame(), "image/png")
         else:
             self._send(404, json.dumps({"error": "not found"}))
 
@@ -157,6 +237,8 @@ class Handler(BaseHTTPRequestHandler):
                 if ax in TRIM:
                     TRIM[ax] = clamp(TRIM[ax] + float(body.get("delta", 0.0)), -0.1, 0.1)
                 print("TRIM", TRIM)
+        elif path == "/api/setting":
+            handle_setting(body)
         elif path == "/api/command":
             if body.get("active"):
                 print("COMMAND", {k: body.get(k) for k in

@@ -81,6 +81,20 @@ def handle_api(method, path, body_bytes, bus, now):
             return 400, "application/json", _json_bytes({"ok": False, "error": "bad delta"})
         return (200 if ok else 400), "application/json", _json_bytes({"ok": bool(ok)})
 
+    # Generic live-settings channel: walk tuning, camera controls, antenna toggle.
+    # Body is either {group, key, value} (a live edit) or {group, action:"save"}.
+    if method == "POST" and path == "/api/setting":
+        try:
+            d = json.loads(body_bytes or b"{}")
+        except (ValueError, TypeError):
+            return 400, "application/json", _json_bytes({"ok": False, "error": "bad json"})
+        group = str(d.get("group", ""))
+        if str(d.get("action", "")) == "save":
+            ok = bus.push_setting_save(group)
+            return (200 if ok else 400), "application/json", _json_bytes({"ok": bool(ok)})
+        ok = bus.push_setting(group, str(d.get("key", "")), d.get("value"))
+        return (200 if ok else 400), "application/json", _json_bytes({"ok": bool(ok)})
+
     return 404, "application/json", _json_bytes({"ok": False, "error": "not found"})
 
 
@@ -169,7 +183,7 @@ def get_lan_ip():
     return "127.0.0.1"
 
 
-def _make_handler(bus, clock, portal_url):
+def _make_handler(bus, clock, portal_url, camera_provider=None):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -197,6 +211,22 @@ def _make_handler(bus, clock, portal_url):
 
         def do_GET(self):
             path = self.path.split("?", 1)[0]
+            # Live camera frame (head-puppet). A single latest JPEG that the page
+            # <img> re-fetches a few times a second — simpler + more robust over this
+            # tiny server than a held-open MJPEG stream. Encoded on demand, so it
+            # costs nothing unless someone is actually watching.
+            if path == "/api/camera/frame.jpg":
+                jpeg = None
+                if camera_provider is not None:
+                    try:
+                        jpeg = camera_provider.snapshot_jpeg()
+                    except Exception:  # noqa: BLE001 - never crash the server on a bad frame
+                        jpeg = None
+                if jpeg:
+                    self._send(200, "image/jpeg", jpeg)
+                else:
+                    self._send(503, "text/plain", b"camera unavailable")
+                return
             if path.startswith("/api/"):
                 r = handle_api("GET", path, b"", bus, clock())
                 self._send(*r)
@@ -240,18 +270,21 @@ class WebControlServer:
     """Owns the HTTP server thread. Construct with the shared ControlBus, call
     start(); the control loop calls bus.set_telemetry(...) each tick."""
 
-    def __init__(self, bus, host="0.0.0.0", port=DEFAULT_PORT, clock=None):
+    def __init__(self, bus, host="0.0.0.0", port=DEFAULT_PORT, clock=None,
+                 camera_provider=None):
         import time as _time
         self.bus = bus
         self.host = host
         self.port = port
         self._clock = clock or _time.time
+        self.camera_provider = camera_provider   # object with .snapshot_jpeg() or None
         self._httpd = None
         self._thread = None
 
     def start(self):
         portal_url = f"http://{get_lan_ip()}:{self.port}/"
-        handler = _make_handler(self.bus, self._clock, portal_url)
+        handler = _make_handler(self.bus, self._clock, portal_url,
+                                self.camera_provider)
         self._httpd = ThreadingHTTPServer((self.host, self.port), handler)
         self._httpd.daemon_threads = True
         self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)

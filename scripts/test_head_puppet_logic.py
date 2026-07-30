@@ -30,11 +30,14 @@ def _install_fakes():
         ("eyes", "Eyes"),
         ("sounds", "Sounds"),
         ("antennas", "Antennas"),
+        ("antenna_anim", "AntennaAnimator"),
         ("projector", "Projector"),
     ]:
         m = types.ModuleType(f"mini_bdx_runtime.{name}")
         setattr(m, attr, _D)
         sys.modules[f"mini_bdx_runtime.{name}"] = m
+    # head_puppet also imports save_config_fields from duck_config (Web UI saves).
+    sys.modules["mini_bdx_runtime.duck_config"].save_config_fields = _D
     _ft = types.ModuleType("mini_bdx_runtime.face_tracker")
     for _n in ("FaceCamera", "FacePresence", "GreetSequence", "TrackingChatter",
                "servo_step", "normalized_error", "map_error_to_axes",

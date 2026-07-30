@@ -20,6 +20,7 @@ from mini_bdx_runtime.fall_detector import FallDetector
 from mini_bdx_runtime.stability_governor import (
     governor_from_config, tilt_angle_deg, tilt_rate,
 )
+from mini_bdx_runtime.antenna_anim import AntennaAnimator
 # Optional: Web UI + scanner sound. The walk still runs if these are absent.
 try:
     from mini_bdx_runtime.control_bus import ControlBus
@@ -34,8 +35,13 @@ except ImportError:
 
 import math
 import os
+import random
 
 HOME_DIR = os.path.expanduser("~")
+
+# action_scale is ramped toward a web-set target so a live change can't step the
+# leg amplitude in one tick (motor safety). Max change per control tick:
+ACTION_SCALE_RAMP = 0.02
 
 # DPAD-LEFT hold (s) to start a whole-body recording; walk_recording.pkl persists
 # the last take across restarts (handy for events).
@@ -161,7 +167,18 @@ class RLWalk:
             self.action_scale = float(self.duck_config.action_scale)
         else:
             self.action_scale = 0.25
+        # Live-tunable target the loop ramps `action_scale` toward (Web UI edits it).
+        self._action_scale_target = self.action_scale
         print(f"action_scale = {self.action_scale}")
+
+        # Per-tick slew clamp: mirror the config flag into a live-tunable attr so the
+        # Web UI can flip it without a restart (the loop reads self.velocity_clip).
+        self.velocity_clip = bool(self.duck_config.velocity_clip)
+
+        # Ear-antenna free-animation driver (idle wiggle when not hand-controlled).
+        self.antenna_anim = AntennaAnimator(
+            enabled=self.duck_config.antenna_free_anim, rng=random.Random()
+        )
 
         self.last_action = np.zeros(self.num_dofs)
         self.last_last_action = np.zeros(self.num_dofs)
@@ -408,6 +425,85 @@ class RLWalk:
         backup = save_config_fields({"imu_trim": trim})
         print(f"[trim] SAVED imu_trim={trim} (backup {backup})")
 
+    # ------------------------------------------------- live web settings (walk) ---
+    def _consume_web_settings(self):
+        """Drain and apply the Web UI's live-settings edits + save requests. Cheap:
+        one lock, then plain attribute writes (no hardware in the hot path)."""
+        if self.web_bus is None:
+            return
+        settings, saves = self.web_bus.consume_settings()
+        if settings.get("walk"):
+            self._apply_walk_settings(settings["walk"])
+        if settings.get("antenna"):
+            self._apply_antenna_settings(settings["antenna"])
+        if "walk" in saves:
+            self._save_walk_settings()
+        if "antenna" in saves:
+            self._save_antenna_settings()
+
+    def _apply_walk_settings(self, d):
+        """Apply live walk-tuning edits. action_scale is ramped (not stepped)."""
+        for key, v in d.items():
+            try:
+                if key == "action_scale":
+                    self._action_scale_target = float(np.clip(float(v), 0.0, 0.6))
+                elif key in ("gait_offset", "phase_frequency_factor_offset"):
+                    self.phase_frequency_factor_offset = float(np.clip(float(v), -0.5, 0.5))
+                elif key == "velocity_clip":
+                    self.velocity_clip = bool(v)
+                elif key == "max_motor_velocity_rad_s":
+                    self.max_motor_velocity = float(np.clip(float(v), 0.5, 12.0))
+                elif key == "governor_enabled":
+                    self.governor.enabled = bool(v)
+                elif key == "governor_tilt_lo_deg":
+                    self.governor.tilt_lo_deg = float(np.clip(float(v), 0.0, 45.0))
+                elif key == "governor_tilt_hi_deg":
+                    self.governor.tilt_hi_deg = float(np.clip(float(v), 0.0, 60.0))
+                elif key == "governor_rate_lo":
+                    self.governor.rate_lo = float(np.clip(float(v), 0.0, 20.0))
+                elif key == "governor_rate_hi":
+                    self.governor.rate_hi = float(np.clip(float(v), 0.0, 30.0))
+                elif key == "governor_floor":
+                    self.governor.floor = float(np.clip(float(v), 0.0, 1.0))
+                elif key == "governor_smooth":
+                    self.governor.smooth = float(np.clip(float(v), 0.01, 1.0))
+            except (ValueError, TypeError):
+                print(f"[walk] ignoring bad setting {key}={v!r}")
+
+    def _governor_config_dict(self):
+        g = self.governor
+        return {
+            "enabled": bool(g.enabled),
+            "tilt_lo_deg": round(float(g.tilt_lo_deg), 3),
+            "tilt_hi_deg": round(float(g.tilt_hi_deg), 3),
+            "rate_lo": round(float(g.rate_lo), 3),
+            "rate_hi": round(float(g.rate_hi), 3),
+            "floor": round(float(g.floor), 3),
+            "smooth": round(float(g.smooth), 3),
+        }
+
+    def _save_walk_settings(self):
+        from mini_bdx_runtime.duck_config import save_config_fields
+        fields = {
+            "action_scale": round(float(self._action_scale_target), 4),
+            "phase_frequency_factor_offset": round(float(self.phase_frequency_factor_offset), 4),
+            "velocity_clip": bool(self.velocity_clip),
+            "max_motor_velocity_rad_s": round(float(self.max_motor_velocity), 3),
+            "stability_governor": self._governor_config_dict(),
+        }
+        backup = save_config_fields(fields)
+        print(f"[walk] SAVED walk tuning {fields} (backup {backup})")
+
+    def _apply_antenna_settings(self, d):
+        if "free_anim" in d:
+            self.antenna_anim.set_enabled(bool(d["free_anim"]))
+            print(f"[antennas] free animation {'ON' if self.antenna_anim.enabled else 'OFF'}")
+
+    def _save_antenna_settings(self):
+        from mini_bdx_runtime.duck_config import save_config_fields
+        backup = save_config_fields({"antenna_free_anim": bool(self.antenna_anim.enabled)})
+        print(f"[antennas] SAVED antenna_free_anim={self.antenna_anim.enabled} (backup {backup})")
+
     def _publish_telemetry(self, now):
         if self.web_bus is None or build_state is None:
             return
@@ -435,6 +531,15 @@ class RLWalk:
             governor={"enabled": self.governor.enabled,
                       "scale": round(float(self._gov_scale), 3),
                       "severity": round(float(self._gov_severity), 3)},
+            walk_params={
+                "action_scale": round(float(self.action_scale), 3),
+                "action_scale_target": round(float(self._action_scale_target), 3),
+                "velocity_clip": bool(self.velocity_clip),
+                "max_motor_velocity_rad_s": round(float(self.max_motor_velocity), 2),
+                "gait_offset": round(float(self.phase_frequency_factor_offset), 3),
+                "governor": self._governor_config_dict(),
+            },
+            antenna_anim=bool(self.antenna_anim.enabled),
         ))
 
     def get_obs(self):
@@ -581,8 +686,13 @@ class RLWalk:
                             self.sounds.play_random_sound()
 
                     if self.duck_config.antennas:
-                        self.antennas.set_position_left(right_trigger)
-                        self.antennas.set_position_right(left_trigger)
+                        # Manual trigger input (cross-wired as before) overrides; when
+                        # idle the animator adds the free-animation wiggle, or rests.
+                        ant_l, ant_r = self.antenna_anim.update(
+                            t, manual_left=right_trigger, manual_right=left_trigger
+                        )
+                        self.antennas.set_position_left(ant_l)
+                        self.antennas.set_position_right(ant_r)
 
                     if self.buttons.A.triggered:
                         self.paused = not self.paused
@@ -607,6 +717,15 @@ class RLWalk:
                         self._nudge_trim("roll", rd)
                     if save_trim:
                         self._save_imu_trim()
+
+                # live walk-tuning / antenna edits from the Web UI (apply + save)
+                self._consume_web_settings()
+
+                # ramp action_scale toward its web-set target (no sudden amplitude jump)
+                if self.action_scale != self._action_scale_target:
+                    self.action_scale += float(np.clip(
+                        self._action_scale_target - self.action_scale,
+                        -ACTION_SCALE_RAMP, ACTION_SCALE_RAMP))
 
                 # scanner sound follows the LED even while paused; publish telemetry
                 self._couple_scanner(t)
@@ -680,7 +799,7 @@ class RLWalk:
                 # Optional per-tick slew clamp: bound how far any joint target can move
                 # in one control dt (a safety net against a bad policy spike). Off by
                 # default -> today's behaviour; enable via duck_config "velocity_clip".
-                if self.duck_config.velocity_clip:
+                if self.velocity_clip:
                     max_delta = self.max_motor_velocity * (1 / self.control_freq)
                     self.motor_targets = np.clip(
                         self.motor_targets,

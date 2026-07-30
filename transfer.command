@@ -62,6 +62,8 @@ FILES=(
   "mini_bdx_runtime/mini_bdx_runtime/raw_imu.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/imu_trim.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/stability_governor.py|mini_bdx_runtime/mini_bdx_runtime"
+  "mini_bdx_runtime/mini_bdx_runtime/antennas.py|mini_bdx_runtime/mini_bdx_runtime"
+  "mini_bdx_runtime/mini_bdx_runtime/antenna_anim.py|mini_bdx_runtime/mini_bdx_runtime"
   # --- Web UI page (served by web_control.py) ---
   "mini_bdx_runtime/mini_bdx_runtime/webui/index.html|mini_bdx_runtime/mini_bdx_runtime/webui"
   "mini_bdx_runtime/mini_bdx_runtime/webui/mock_server.py|mini_bdx_runtime/mini_bdx_runtime/webui"
@@ -81,6 +83,10 @@ FILES=(
   "ops/captive-portal/duck-captive.nft|ops/captive-portal"
   "ops/captive-portal/90-duck-captive|ops/captive-portal"
   "ops/captive-portal/dnsmasq-captive.conf|ops/captive-portal"
+  # --- Antenna jitter fix (pigpio hardware PWM; run setup on the Pi) ---
+  "ops/pigpio/README.md|ops/pigpio"
+  "ops/pigpio/setup-pigpio.sh|ops/pigpio"
+  "ops/pigpio/pigpiod-override.conf|ops/pigpio"
 )
 
 echo "================================================="
@@ -167,11 +173,14 @@ cat <<'EOF'
    6. Features: edit ~/duck_config.json "expression_features"
                 (camera/speaker/antennas/projector). Web UI on by default
                 ("web_ui": false to disable, "web_port": 8080). Battery under
-                "battery". Face tracking needs cv2 in the venv.
-   7. Phone captive portal (join Wi-Fi -> control UI, stays connected):
+                "battery". Face tracking + live camera view need cv2 in the venv.
+                Tune walk / camera / antennas live from the phone (TUNE button).
+   7. Antenna jitter fix (pigpio hardware PWM; I2S-safe -t 0):
+                     sudo bash ops/pigpio/setup-pigpio.sh
+   8. Phone captive portal (join Wi-Fi -> control UI, stays connected):
                      sudo bash ops/captive-portal/setup-captive-portal.sh
                      sudo reboot         # activates the DNS half
-   8. Xbox auto-reconnect (optional):
+   9. Xbox auto-reconnect (optional):
                      bash ops/bluetooth/setup-bluetooth-reconnect.sh
 
  NOTE: for a DIFFERENT hostname/user, edit REMOTE_* at the top. If the second duck

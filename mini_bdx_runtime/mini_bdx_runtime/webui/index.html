@@ -221,6 +221,46 @@ body{
        color:var(--amber); font-size:11px; letter-spacing:.12em; padding:8px 16px;
        border-radius:999px; display:none; z-index:20; box-shadow:var(--glow)}
 #recon.show{display:block}
+
+/* ---------- TUNE panel (bottom sheet) ---------- */
+.pill.tunebtn{background:var(--well); color:var(--amber); border:1px solid var(--amber); cursor:pointer}
+.tune{position:fixed; inset:0; z-index:40; display:flex; flex-direction:column;
+      background:linear-gradient(180deg,#151009,var(--void)); transform:translateY(100%);
+      transition:transform .22s cubic-bezier(.2,.8,.2,1); visibility:hidden}
+.tune.show{transform:translateY(0); visibility:visible}
+.tune-hd{display:flex; align-items:center; justify-content:space-between; gap:8px;
+         padding:calc(env(safe-area-inset-top) + 10px) 14px 10px; border-bottom:1px solid var(--line)}
+.tune-hd b{font-family:var(--sans); font-weight:800; letter-spacing:.14em; color:var(--amber); font-size:14px}
+.tune-body{flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch;
+           padding:12px 14px calc(env(safe-area-inset-bottom) + 22px);
+           display:flex; flex-direction:column; gap:13px; max-width:560px; margin:0 auto; width:100%}
+.tsec{border:1px solid var(--line); border-radius:12px; background:var(--panel); padding:10px 12px}
+.tsec>.lbl{color:var(--amber); display:block; margin-bottom:6px}
+.trow{display:grid; grid-template-columns:1fr auto; gap:2px 10px; align-items:center; margin:10px 0}
+.trow .name{font-size:12px; color:var(--ink)}
+.trow .tval{font-size:12px; color:var(--amber); text-align:right; min-width:56px; font-variant-numeric:tabular-nums}
+.trow input[type=range]{grid-column:1/-1; -webkit-appearance:none; appearance:none; height:28px;
+       background:transparent; width:100%; margin:0}
+.trow.dis{opacity:.4; pointer-events:none}
+input[type=range]::-webkit-slider-runnable-track{height:6px; border-radius:3px; background:#0e0b07; border:1px solid var(--line)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:24px; height:24px; margin-top:-10px;
+       border-radius:50%; background:radial-gradient(circle at 40% 35%,#ffd27a,var(--amber-hot));
+       box-shadow:0 0 0 2px rgba(16,14,10,.7),0 0 10px rgba(255,140,26,.5)}
+input[type=range]::-moz-range-track{height:6px; border-radius:3px; background:#0e0b07; border:1px solid var(--line)}
+input[type=range]::-moz-range-thumb{width:22px; height:22px; border:none; border-radius:50%; background:var(--amber)}
+.btn.tgl{min-height:34px; min-width:66px; padding:6px 14px; flex-direction:row; border-radius:9px;
+         font-size:12px; letter-spacing:.1em}
+.btn.tgl.on{background:linear-gradient(180deg,#4a3512,#2e2109); border-color:var(--amber); color:var(--amber)}
+.btn.tsave{width:100%; min-height:44px; margin-top:4px; border-color:var(--amber); color:var(--amber);
+           letter-spacing:.14em; font-size:12px}
+.camwrap{position:relative; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:#000;
+         aspect-ratio:1/1; max-width:300px; margin:0 auto 8px; width:100%; display:flex;
+         align-items:center; justify-content:center}
+#camView{width:100%; height:100%; object-fit:contain; display:block}
+.camstat{position:absolute; top:6px; left:8px; font-size:9.5px; letter-spacing:.12em; color:var(--amber);
+         background:rgba(16,14,10,.6); padding:2px 7px; border-radius:6px}
+.camstat.err{color:var(--alarm)}
+.thint{font-size:10.5px; color:var(--dim); line-height:1.45; margin-top:2px}
 </style>
 
 <div id="app">
@@ -231,6 +271,7 @@ body{
     </div>
     <div class="status">
       <div class="conn" id="conn"><span class="dot"></span><b id="connTxt">LINK</b></div>
+      <button class="pill tunebtn" id="tuneBtn" aria-label="tuning panel">TUNE</button>
       <span class="pill" id="mode">WALK</span>
     </div>
   </header>
@@ -316,6 +357,14 @@ body{
   </main>
 </div>
 <div id="recon">RECONNECTING…</div>
+
+<div id="tune" class="tune" aria-hidden="true">
+  <div class="tune-hd">
+    <b id="tuneTitle">TUNING</b>
+    <button class="btn tb" id="tuneClose" aria-label="close">✕</button>
+  </div>
+  <div class="tune-body" id="tuneBody"></div>
+</div>
 
 <script>
 "use strict";
@@ -466,7 +515,7 @@ function renderControls(mode){
 }
 
 /* ---------- state / render ---------- */
-let curMode=null, lastOk=0;
+let curMode=null, lastOk=0, lastState=null, tuneOpen=false;
 const net={connected:false};
 
 function poll(){
@@ -511,10 +560,13 @@ function setBanner(s){
 }
 
 function render(s){
+  lastState=s;
   // mode + panel
   if(s.mode!==curMode){ curMode=s.mode; renderControls(s.mode);
     const p=$("mode"); p.textContent = s.mode==="head_puppet"?"HEAD":"WALK";
-    p.classList.toggle("head",s.mode==="head_puppet"); }
+    p.classList.toggle("head",s.mode==="head_puppet");
+    if(tuneOpen) openTune();   // rebuild the tune panel for the new mode
+  }
 
   setBanner(s);
 
@@ -584,6 +636,131 @@ function setActive(id,on){ const e=$(id); if(e) e.classList.toggle("active",!!on
 function setFeat(id,on){ const e=$(id); if(e){ e.classList.toggle("disabled",!on); if(!on) e.setAttribute("aria-disabled","true"); } }
 function setRec(id,on){ const e=$(id); if(e) e.classList.toggle("rec",!!on); }
 function setPlay(id,on){ const e=$(id); if(e) e.classList.toggle("play",!!on); }
+
+/* ================= TUNE panel (walk tuning · camera · antennas) ================= */
+const WALK_CONTROLS=[
+  {k:"action_scale",name:"Action scale",min:0,max:0.6,step:0.01},
+  {k:"gait_offset",name:"Gait freq offset",min:-0.5,max:0.5,step:0.01},
+  {k:"max_motor_velocity_rad_s",name:"Max motor vel",min:0.5,max:12,step:0.1,unit:"rad/s"},
+  {k:"velocity_clip",name:"Velocity clip",type:"tgl"},
+  {k:"governor_enabled",name:"Stability governor",type:"tgl"},
+  {k:"governor_tilt_lo_deg",name:"Gov tilt lo",min:0,max:45,step:0.5,unit:"°"},
+  {k:"governor_tilt_hi_deg",name:"Gov tilt hi",min:0,max:60,step:0.5,unit:"°"},
+  {k:"governor_rate_lo",name:"Gov rate lo",min:0,max:20,step:0.1},
+  {k:"governor_rate_hi",name:"Gov rate hi",min:0,max:30,step:0.1},
+  {k:"governor_floor",name:"Gov floor speed",min:0,max:1,step:0.05},
+  {k:"governor_smooth",name:"Gov smoothing",min:0.05,max:1,step:0.05},
+];
+const CAM_CONTROLS=[
+  {k:"ae",name:"Auto exposure",type:"tgl"},
+  {k:"exposure",name:"Exposure",min:100,max:33000,step:100,unit:"µs"},
+  {k:"gain",name:"Gain",min:1,max:16,step:0.1,unit:"×"},
+  {k:"awb",name:"Auto white balance",type:"tgl"},
+  {k:"brightness",name:"Brightness",min:-1,max:1,step:0.05},
+  {k:"contrast",name:"Contrast",min:0,max:2,step:0.05},
+  {k:"saturation",name:"Saturation",min:0,max:2,step:0.05},
+  {k:"sharpness",name:"Sharpness",min:0,max:2,step:0.05},
+];
+const CAM_DEFAULTS={ae:true,awb:true,exposure:10000,gain:1,brightness:0,contrast:1,saturation:1,sharpness:1};
+
+const decs=step=>{const s=String(step),i=s.indexOf(".");return i<0?0:s.length-i-1;};
+function fmtVal(spec,v){ const d=spec.dec!=null?spec.dec:decs(spec.step);
+  let s=Number(v).toFixed(d); if(spec.min<0&&v>=0)s="+"+s; return s+(spec.unit?(" "+spec.unit):""); }
+function fmtValFromInput(inp,v){ const d=+inp.dataset.dec,u=inp.dataset.unit,sign=inp.dataset.sign==="1";
+  let s=Number(v).toFixed(d); if(sign&&v>=0)s="+"+s; return s+(u?(" "+u):""); }
+
+function sliderRow(group,spec,val){ const id=`tc_${group}_${spec.k}`,d=spec.dec!=null?spec.dec:decs(spec.step);
+  return `<div class="trow"><span class="name">${spec.name}</span>
+    <span class="tval" id="${id}_v">${fmtVal(spec,val)}</span>
+    <input type="range" id="${id}" data-group="${group}" data-key="${spec.k}" data-unit="${spec.unit||""}"
+      data-dec="${d}" data-sign="${spec.min<0?1:0}" min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${val}"></div>`; }
+function toggleRow(group,spec,on){ const id=`tc_${group}_${spec.k}`;
+  return `<div class="trow tog"><span class="name">${spec.name}</span>
+    <button class="btn tgl${on?" on":""}" id="${id}" data-group="${group}" data-key="${spec.k}" data-on="${on?1:0}">${on?"ON":"OFF"}</button></div>`; }
+
+function readWalk(k,wp,gov){
+  if(k==="action_scale") return wp.action_scale_target!=null?wp.action_scale_target:(wp.action_scale!=null?wp.action_scale:0.25);
+  if(k.indexOf("governor_")===0){ const gk=k.slice(9);
+    if(gk==="enabled") return !!gov.enabled; return gov[gk]!=null?gov[gk]:0; }
+  return wp[k]!=null?wp[k]:0;
+}
+function antennaSection(s){ const on=!!s.antenna_anim;
+  return `<div class="tsec"><span class="lbl">Ear antennas</span>
+    ${toggleRow("antenna",{k:"free_anim",name:"Free animation"},on)}
+    <div class="thint">On = gentle idle wiggle when you're not holding the ears. Off = precise hand control (triggers); the ears rest still. Needs the pigpio jitter fix for steady ears.</div>
+    <button class="btn tsave" data-save="antenna">SAVE ANTENNA MODE TO DUCK</button></div>`; }
+
+function renderTune(mode){
+  const s=lastState||{}, body=$("tuneBody");
+  $("tuneTitle").textContent=(mode==="head_puppet"?"HEAD":"WALK")+" · TUNING";
+  let html="";
+  if(mode==="head_puppet"){
+    const cam=s.camera||{}, avail=!!cam.available, cc=cam.controls||{};
+    html+=`<div class="tsec"><span class="lbl">Camera</span>
+      <div class="camwrap"><span class="camstat" id="camStat">…</span><img id="camView" alt="camera preview"></div>
+      <div class="thint">${avail?"Live view — confirm the camera works, then tune it for the room. Turn Auto exposure off to set exposure &amp; gain by hand.":"No camera detected. Enable <b>camera</b> in duck_config and connect the picam, then restart."}</div>`;
+    if(avail){
+      CAM_CONTROLS.forEach(spec=>{ const v=cc[spec.k]!=null?cc[spec.k]:CAM_DEFAULTS[spec.k];
+        html+= spec.type==="tgl"?toggleRow("camera",spec,!!v):sliderRow("camera",spec,v); });
+      html+=`<button class="btn tsave" data-save="camera">SAVE CAMERA TO DUCK</button>`;
+    }
+    html+=`</div>`+antennaSection(s);
+  }else{
+    const wp=s.walk_params||{}, gov=wp.governor||{};
+    html+=`<div class="tsec"><span class="lbl">Walk tuning</span>`;
+    WALK_CONTROLS.forEach(spec=>{ const v=readWalk(spec.k,wp,gov);
+      html+= spec.type==="tgl"?toggleRow("walk",spec,!!v):sliderRow("walk",spec,v); });
+    html+=`<div class="thint">Action scale ramps in smoothly (lower = steadier, higher = livelier). All edits are live; press Save to keep them across restarts.</div>
+      <button class="btn tsave" data-save="walk">SAVE WALK TUNING TO DUCK</button></div>`+antennaSection(s);
+  }
+  body.innerHTML=html;
+  wireTune();
+}
+
+function applyCamDisable(){ const ae=$("tc_camera_ae"); if(!ae)return; const on=ae.dataset.on==="1";
+  ["exposure","gain"].forEach(k=>{ const el=$("tc_camera_"+k); if(el)el.closest(".trow").classList.toggle("dis",on); }); }
+
+function wireTune(){
+  const body=$("tuneBody");
+  body.querySelectorAll('input[type=range]').forEach(inp=>{
+    let last=0;
+    const send=()=>post("/api/setting",{group:inp.dataset.group,key:inp.dataset.key,value:parseFloat(inp.value)});
+    inp.addEventListener('input',()=>{ const v=parseFloat(inp.value); const vs=$(inp.id+"_v");
+      if(vs)vs.textContent=fmtValFromInput(inp,v);
+      const t=performance.now(); if(t-last>=100){last=t; send();} });
+    inp.addEventListener('change',send);
+  });
+  body.querySelectorAll('.btn.tgl').forEach(btn=>{
+    btn.addEventListener('click',()=>{ const on=btn.dataset.on!=="1"; btn.dataset.on=on?"1":"0";
+      btn.classList.toggle('on',on); btn.textContent=on?"ON":"OFF"; buzz(8);
+      post("/api/setting",{group:btn.dataset.group,key:btn.dataset.key,value:on});
+      if(btn.dataset.group==="camera"&&btn.dataset.key==="ae") applyCamDisable(); });
+  });
+  body.querySelectorAll('[data-save]').forEach(b=>{
+    b.addEventListener('click',()=>{ post("/api/setting",{group:b.dataset.save,action:"save"}); buzz(20);
+      const t=b.textContent; b.textContent="SAVED ✓"; setTimeout(()=>{b.textContent=t;},1200); });
+  });
+  applyCamDisable();
+}
+
+/* live camera preview — poll a single JPEG a few times a second (robust over the
+   tiny server; encoded on demand so it costs nothing when the panel is closed). */
+let camTimer=null;
+function startCam(){ stopCam(); const img=$("camView"), stat=$("camStat"); if(!img)return;
+  const tick=()=>{ img.src="/api/camera/frame.jpg?ts="+Date.now(); };
+  img.onload=()=>{ if(stat){stat.textContent="LIVE"; stat.classList.remove("err");} camTimer=setTimeout(tick,140); };
+  img.onerror=()=>{ if(stat){stat.textContent="no signal"; stat.classList.add("err");} camTimer=setTimeout(tick,1000); };
+  tick(); }
+function stopCam(){ if(camTimer){clearTimeout(camTimer); camTimer=null;} const img=$("camView"); if(img){img.onload=null; img.onerror=null;} }
+
+function openTune(){ tuneOpen=true; stopCam(); renderTune(curMode||"walk");
+  const t=$("tune"); t.classList.add("show"); t.setAttribute("aria-hidden","false");
+  const cam=(lastState&&lastState.camera)||{};
+  if((curMode||"walk")==="head_puppet" && cam.available) startCam(); }
+function closeTune(){ tuneOpen=false; const t=$("tune"); t.classList.remove("show");
+  t.setAttribute("aria-hidden","true"); stopCam(); }
+$("tuneBtn").addEventListener("click",()=>tuneOpen?closeTune():openTune());
+$("tuneClose").addEventListener("click",closeTune);
 
 // guard against iOS rubber-band / double-tap zoom on the console
 document.addEventListener("gesturestart",e=>e.preventDefault());

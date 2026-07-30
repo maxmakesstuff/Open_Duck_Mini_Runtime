@@ -241,5 +241,29 @@ def _run():
     return failed
 
 
+# ----------------------------------------------------------- camera controls
+def test_camera_controls_map_and_coerce():
+    out = ft._coerce_camera_controls(
+        {"ae": False, "exposure": 5000, "gain": 2.0, "brightness": 0.1})
+    assert out["AeEnable"] is False
+    assert out["ExposureTime"] == 5000 and isinstance(out["ExposureTime"], int)
+    assert abs(out["AnalogueGain"] - 2.0) < EPS
+    assert abs(out["Brightness"] - 0.1) < EPS
+
+
+def test_camera_controls_clamp_out_of_range():
+    out = ft._coerce_camera_controls(
+        {"gain": 999.0, "brightness": -5.0, "exposure": 10})
+    assert out["AnalogueGain"] == 16.0        # clamped to hi
+    assert out["Brightness"] == -1.0          # clamped to lo
+    assert out["ExposureTime"] == 100         # clamped to lo
+
+
+def test_camera_controls_drops_unknown_and_bad():
+    out = ft._coerce_camera_controls(
+        {"nope": 1, "gain": "notanumber", "contrast": 1.5})
+    assert "nope" not in str(out) and out == {"Contrast": 1.5}
+
+
 if __name__ == "__main__":
     sys.exit(1 if _run() else 0)

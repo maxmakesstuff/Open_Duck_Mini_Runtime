@@ -97,6 +97,14 @@ class DuckConfig:
         self.web_port = int(self.json_config.get("web_port", 8080))
         self.battery = self.json_config.get("battery", {})
 
+        # Ear-antenna "free animation": a scripted idle wiggle (see antenna_anim.py).
+        # On by default so the ears feel alive once the pigpio jitter fix removes the
+        # accidental twitch; toggle it live from the Web UI (persists here on Save).
+        self.antenna_free_anim = bool(self.json_config.get("antenna_free_anim", True))
+        # Persisted libcamera controls for the head-puppet live camera view (exposure,
+        # gain, brightness, ...). {} -> the camera's auto defaults. Tuned from the Web UI.
+        self.camera_controls = self.json_config.get("camera_controls", {})
+
         expression_features = self.json_config.get("expression_features", {})
 
         self.eyes = expression_features.get("eyes", False)

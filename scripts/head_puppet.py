@@ -33,11 +33,12 @@ import random
 import numpy as np
 
 from mini_bdx_runtime.rustypot_position_hwi import HWI
-from mini_bdx_runtime.duck_config import DuckConfig
+from mini_bdx_runtime.duck_config import DuckConfig, save_config_fields
 from mini_bdx_runtime.xbox_controller import XBoxController
 from mini_bdx_runtime.eyes import Eyes
 from mini_bdx_runtime.sounds import Sounds
 from mini_bdx_runtime.antennas import Antennas
+from mini_bdx_runtime.antenna_anim import AntennaAnimator
 from mini_bdx_runtime.projector import Projector
 from mini_bdx_runtime.face_tracker import (
     FaceCamera, FacePresence, GreetSequence, TrackingChatter, CHATTER_SOUNDS,
@@ -192,15 +193,21 @@ def main():
         if duck_config.speaker else None
     )
     antennas = Antennas() if duck_config.antennas else None
+    # Ear free-animation (idle wiggle when the ears aren't hand-controlled). Toggled
+    # live from the Web UI; manual trigger input always overrides it.
+    antenna_anim = AntennaAnimator(
+        enabled=duck_config.antenna_free_anim, rng=random.Random()
+    )
     eyes = Eyes() if duck_config.eyes else None
     projector = Projector() if duck_config.projector else None
 
-    # Face tracking (optional). Disabled cleanly if the picam/cv2 isn't there.
+    # Face tracking + live camera view (optional). The one FaceCamera owns the picam
+    # and also serves the Web UI's live view, so there's never a second camera open.
     face_cam = None
     if duck_config.camera:
         try:
-            face_cam = FaceCamera()
-            print("Face tracking available — DPAD-UP to toggle.")
+            face_cam = FaceCamera(camera_controls=duck_config.camera_controls)
+            print("Camera available — live view in the Web UI; DPAD-UP to face-track.")
         except Exception as e:  # noqa: BLE001
             print(f"[head_puppet] face tracking unavailable: {e}")
             face_cam = None
@@ -233,7 +240,10 @@ def main():
     battery_mon = BatteryMonitor(getattr(duck_config, "battery", {})) if BatteryMonitor else None
     if web_bus is not None and WebControlServer is not None:
         try:
-            web_server = WebControlServer(web_bus, port=getattr(duck_config, "web_port", 8080))
+            web_server = WebControlServer(
+                web_bus, port=getattr(duck_config, "web_port", 8080),
+                camera_provider=face_cam,   # serves /api/camera/frame.jpg (live view)
+            )
             web_server.start()
         except Exception as e:  # noqa: BLE001
             print(f"[head_puppet] web UI unavailable: {e}")
@@ -278,7 +288,37 @@ def main():
             recording_state=rec_state, recording_frames=len(recording),
             control_hz=CONTROL_HZ, features=_features, flags=flags,
             sounds=_sound_names, uptime_s=now - _start_t, imu=None,
+            camera={"available": face_cam is not None,
+                    "controls": (face_cam.get_camera_controls()
+                                 if face_cam is not None else {})},
+            antenna_anim=bool(antenna_anim.enabled),
         ))
+
+    def consume_web_settings():
+        """Apply + persist the Web UI's live camera / antenna edits (cheap: one lock
+        then attribute writes; camera set_controls only fires when something changed)."""
+        if web_bus is None:
+            return
+        settings, saves = web_bus.consume_settings()
+        cam = settings.get("camera")
+        if cam and face_cam is not None:
+            face_cam.set_camera_controls(cam)
+        if "camera" in saves and face_cam is not None:
+            try:
+                save_config_fields({"camera_controls": face_cam.get_camera_controls()})
+                print("[head_puppet] SAVED camera_controls")
+            except Exception as e:  # noqa: BLE001
+                print(f"[head_puppet] could not save camera_controls: {e}")
+        ant = settings.get("antenna")
+        if ant and "free_anim" in ant:
+            antenna_anim.set_enabled(bool(ant["free_anim"]))
+            print(f"[antennas] free animation {'ON' if antenna_anim.enabled else 'OFF'}")
+        if "antenna" in saves:
+            try:
+                save_config_fields({"antenna_free_anim": bool(antenna_anim.enabled)})
+                print("[head_puppet] SAVED antenna_free_anim")
+            except Exception as e:  # noqa: BLE001
+                print(f"[head_puppet] could not save antenna_free_anim: {e}")
 
     state = "LIVE"                      # LIVE | RECORDING | PLAYBACK
     recording = []                     # list of frame dicts
@@ -304,6 +344,7 @@ def main():
                 loop_hz = 0.9 * loop_hz + 0.1 * (1.0 / max(1e-6, now - _last_tick_t))
             _last_tick_t = now
             publish_telemetry(now, state, recording)
+            consume_web_settings()
             last_commands, buttons, left_trigger, right_trigger = (
                 controller.get_last_command()
             )
@@ -520,8 +561,12 @@ def main():
             hwi.set_position("head_pitch", pitch)
             prev_head = [yaw, roll, pitch]   # keep synced for a smooth playback entry
 
-            ant_left_val = right_trigger     # original cross-wiring
-            ant_right_val = left_trigger
+            # Manual triggers (original cross-wiring) override; when idle the animator
+            # supplies the free-animation wiggle, or rests if it's switched off. The
+            # value the ears actually take is what gets recorded, so playback matches.
+            ant_left_val, ant_right_val = antenna_anim.update(
+                now, manual_left=right_trigger, manual_right=left_trigger
+            )
             if antennas is not None:
                 antennas.set_position_left(ant_left_val)
                 antennas.set_position_right(ant_right_val)

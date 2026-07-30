@@ -88,6 +88,17 @@ def test_build_state_governor_default_and_passthrough():
     assert s2["governor"] == gov
 
 
+def test_build_state_new_fields_default_none_and_passthrough():
+    base = ("walk", False, {"voltage": None, "percent": None, "charging": None},
+            50.0, None, False, "idle", 0, 50, {}, {}, [], 0.0)
+    s = build_state(*base)
+    assert s["walk_params"] is None and s["camera"] is None and s["antenna_anim"] is None
+    wp = {"action_scale": 0.2, "velocity_clip": True}
+    cam = {"available": True, "controls": {"Brightness": 0.0}}
+    s2 = build_state(*base, walk_params=wp, camera=cam, antenna_anim=True)
+    assert s2["walk_params"] == wp and s2["camera"] == cam and s2["antenna_anim"] is True
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

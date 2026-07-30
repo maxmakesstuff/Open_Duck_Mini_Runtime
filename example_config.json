@@ -9,6 +9,8 @@
         "v_max": 8.4,
         "v_full": 8.5
     },
+    "antenna_free_anim": true,
+    "camera_controls": {},
     "expression_features": {
         "eyes": false,
         "projector": false,

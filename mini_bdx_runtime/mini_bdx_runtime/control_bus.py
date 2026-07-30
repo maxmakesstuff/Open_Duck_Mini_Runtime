@@ -50,6 +50,13 @@ class ControlBus:
         self._trim_delta = {"pitch": 0.0, "roll": 0.0}
         self._trim_save = False
 
+        # Generic live-settings channel: the web posts {group, key, value} edits
+        # (walk tuning, camera controls, antenna free-anim toggle) and per-group
+        # "save to duck_config" requests; the control loop drains them each tick
+        # (see consume_settings) and applies/persists them. Last write per key wins.
+        self._settings = {}          # {group: {key: value, ...}, ...}
+        self._setting_saves = set()  # {group, ...} groups asked to persist
+
         self._telemetry = {}
 
     # ------------------------------------------------------ web -> robot (in)
@@ -90,7 +97,38 @@ class ControlBus:
             self._trim_save = True
         return True
 
+    def push_setting(self, group, key, value):
+        """Queue a live-settings edit (group=\"walk\"|\"camera\"|\"antenna\", etc.).
+        Value is stored verbatim (bool/number/str); the loop clamps on apply.
+        Last write for a given (group,key) before the next consume wins."""
+        group, key = str(group), str(key)
+        if not group or not key:
+            return False
+        with self._lock:
+            self._settings.setdefault(group, {})[key] = value
+        return True
+
+    def push_setting_save(self, group):
+        """Queue a 'persist this group to duck_config' request."""
+        group = str(group)
+        if not group:
+            return False
+        with self._lock:
+            self._setting_saves.add(group)
+        return True
+
     # ------------------------------------------------------ robot <- web (read)
+    def consume_settings(self):
+        """Return (settings, saves) accumulated since the last call and reset them.
+        `settings` is {group: {key: value}}, `saves` is a set of group names to
+        persist. Empty ({}, set()) when nothing is pending."""
+        with self._lock:
+            settings = self._settings
+            saves = self._setting_saves
+            self._settings = {}
+            self._setting_saves = set()
+            return settings, saves
+
     def consume_trim(self):
         """Return (pitch_delta, roll_delta, save) accumulated since the last call,
         resetting them. The walk loop applies the deltas to the live IMU."""

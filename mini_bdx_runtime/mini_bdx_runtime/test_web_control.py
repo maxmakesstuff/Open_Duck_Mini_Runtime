@@ -113,6 +113,37 @@ def test_trim_bad_axis_400():
     assert status == 400 and json.loads(resp)["ok"] is False
 
 
+def test_setting_edit_routes_to_bus():
+    bus = ControlBus()
+    body = json.dumps({"group": "walk", "key": "action_scale", "value": 0.2}).encode()
+    status, ct, resp = handle_api("POST", "/api/setting", body, bus, 0.0)
+    assert status == 200 and json.loads(resp)["ok"] is True
+    settings, saves = bus.consume_settings()
+    assert settings == {"walk": {"action_scale": 0.2}} and saves == set()
+
+
+def test_setting_save_routes_to_bus():
+    bus = ControlBus()
+    body = json.dumps({"group": "camera", "action": "save"}).encode()
+    status, ct, resp = handle_api("POST", "/api/setting", body, bus, 0.0)
+    assert status == 200 and json.loads(resp)["ok"] is True
+    settings, saves = bus.consume_settings()
+    assert saves == {"camera"}
+
+
+def test_setting_missing_group_400():
+    bus = ControlBus()
+    body = json.dumps({"key": "x", "value": 1}).encode()
+    status, ct, resp = handle_api("POST", "/api/setting", body, bus, 0.0)
+    assert status == 400 and json.loads(resp)["ok"] is False
+
+
+def test_setting_bad_json_400():
+    bus = ControlBus()
+    status, ct, resp = handle_api("POST", "/api/setting", b"{nope", bus, 0.0)
+    assert status == 400 and json.loads(resp)["ok"] is False
+
+
 def test_unknown_api_404():
     bus = ControlBus()
     status, ct, body = handle_api("GET", "/api/nope", b"", bus, 0.0)

@@ -95,6 +95,47 @@ DEBUG = True         # print each detection's face center (handy for axis tuning
 # a Python minor version (true for this Pi). Set to "" to disable.
 SYSTEM_DIST_PACKAGES = "/usr/lib/python3/dist-packages"
 
+# ---- live camera view (Web UI) ----
+JPEG_QUALITY = 70
+# picamera2's "RGB888" main stream actually hands back bytes in B,G,R order (a
+# long-standing quirk), which is exactly what cv2.imencode expects — so we encode
+# the frame as-is and colours come out right. If the live view looks blue/orange
+# swapped on a given build, flip this to True to add an RB swap before encoding.
+JPEG_SWAP_RB = False
+
+# Friendly camera-control key -> (libcamera/picamera2 control name, coerce, (lo, hi)).
+# These are the knobs exposed in the Web UI so the camera can be tuned to the room.
+# ExposureTime/AnalogueGain only bite when auto-exposure (ae) is off.
+CAMERA_CONTROLS = {
+    "ae":         ("AeEnable",      bool,  (0, 1)),
+    "exposure":   ("ExposureTime",  int,   (100, 33000)),   # microseconds
+    "gain":       ("AnalogueGain",  float, (1.0, 16.0)),
+    "brightness": ("Brightness",    float, (-1.0, 1.0)),
+    "contrast":   ("Contrast",      float, (0.0, 2.0)),
+    "saturation": ("Saturation",    float, (0.0, 2.0)),
+    "sharpness":  ("Sharpness",     float, (0.0, 2.0)),
+    "awb":        ("AwbEnable",     bool,  (0, 1)),
+}
+
+
+def _coerce_camera_controls(friendly):
+    """Map a {friendly_key: value} dict to a {picamera2_control: value} dict,
+    coercing types and clamping to the safe range. Unknown keys are dropped."""
+    out = {}
+    for k, v in (friendly or {}).items():
+        spec = CAMERA_CONTROLS.get(k)
+        if spec is None:
+            continue
+        name, coerce, (lo, hi) = spec
+        try:
+            if coerce is bool:
+                out[name] = bool(v)
+            else:
+                out[name] = coerce(min(max(coerce(v), lo), hi))
+        except (ValueError, TypeError):
+            continue
+    return out
+
 
 # ----------------------------- pure geometry -----------------------------
 def largest_face(faces):
@@ -379,7 +420,8 @@ class FaceCamera:
     Lazy-imports cv2/picamera2 so the rest of this module imports off-robot.
     Raises from __init__ on any failure -> head_puppet disables the feature."""
 
-    def __init__(self, cap_w=CAP_W, cap_h=CAP_H, detect_fps=DETECT_FPS):
+    def __init__(self, cap_w=CAP_W, cap_h=CAP_H, detect_fps=DETECT_FPS,
+                 camera_controls=None):
         # libcamera/picamera2 are system apt packages (compiled bindings) the venv
         # can't import on its own; make them importable (see SYSTEM_DIST_PACKAGES).
         import sys
@@ -418,9 +460,15 @@ class FaceCamera:
             init_w, init_h = cap_w, cap_h
         self._lock = threading.Lock()
         self._latest = (False, 0.0, 0.0, init_w, init_h, 0.0)
+        self._last_frame = None          # latest rotated frame, for the live JPEG view
+        self._desired_controls = {}      # friendly camera controls currently applied
         self._running = True
         self._thread = threading.Thread(target=self._worker, daemon=True)
         self._thread.start()
+
+        # apply any persisted/initial camera controls (exposure, gain, ...).
+        if camera_controls:
+            self.set_camera_controls(camera_controls)
 
     def _worker(self):
         cv2 = self._cv2
@@ -430,6 +478,9 @@ class FaceCamera:
                 frame = self._cam.capture_array()          # already cap_w x cap_h
                 if self._rotate_code is not None:
                     frame = cv2.rotate(frame, self._rotate_code)
+                # publish the upright frame for the Web UI live view (ref swap, ~free)
+                with self._lock:
+                    self._last_frame = frame
                 gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
                 # Normalize contrast so a dark/backlit face is still detectable and
                 # detection doesn't depend on the camera's exposure (see EQUALIZE_HIST).
@@ -462,6 +513,42 @@ class FaceCamera:
     def latest(self):
         with self._lock:
             return self._latest
+
+    # ---- live camera view + tunable controls (Web UI) ----
+    def snapshot_jpeg(self, quality=JPEG_QUALITY):
+        """Encode the most recent frame to JPEG bytes (or None if none yet).
+        Called on demand by the web server, so it costs nothing unless watched."""
+        with self._lock:
+            frame = self._last_frame
+        if frame is None:
+            return None
+        cv2 = self._cv2
+        img = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR) if JPEG_SWAP_RB else frame
+        try:
+            ok, buf = cv2.imencode(".jpg", img,
+                                   [int(cv2.IMWRITE_JPEG_QUALITY), int(quality)])
+        except Exception:  # noqa: BLE001
+            return None
+        return buf.tobytes() if ok else None
+
+    def set_camera_controls(self, friendly):
+        """Apply {friendly_key: value} camera controls live (see CAMERA_CONTROLS).
+        Merges into the current desired set. Returns the merged friendly dict."""
+        pc = _coerce_camera_controls(friendly)
+        if pc:
+            try:
+                self._cam.set_controls(pc)
+            except Exception as e:  # noqa: BLE001 - a bad control must not kill tracking
+                print(f"[face] set_controls failed: {e}")
+        # remember what we asked for (only the recognised keys)
+        for k in (friendly or {}):
+            if k in CAMERA_CONTROLS:
+                self._desired_controls[k] = friendly[k]
+        return dict(self._desired_controls)
+
+    def get_camera_controls(self):
+        with self._lock:
+            return dict(self._desired_controls)
 
     def stop(self):
         self._running = False

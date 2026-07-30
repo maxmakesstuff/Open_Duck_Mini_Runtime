@@ -12,7 +12,7 @@ against the current code before acting.
 
 ---
 
-## Current state (last updated 2026-07-12, branch `feature/overnight-suite`)
+## Current state (last updated 2026-07-30, branch `feature/overnight-suite`)
 
 Two physical robots ("ducks"), identical hardware. **Both are now fully commissioned and
 walking stably.** Duck 2 was brought up end-to-end this session — full `transfer.command`,
@@ -38,6 +38,36 @@ its exact state. What is LIVE on the **reference duck**:
 Recent commits (`git log --oneline`): stability levers `0cdc069`, config baseline
 `acfb147`, captive portal `2754311`+`bd146d9`, German manual `08e2010`, second-duck
 deploy `f8c7635`. The pre-session baseline is `37c7638`.
+
+### New this session (2026-07-30) — **NOT yet tested on hardware**
+
+Three features added; all pure logic is unit-tested (19 test files green) and every
+touched module py-compiles, but nothing has run on a real duck yet. Validate on-robot
+next, gently (motor-safety rules below still apply):
+
+- **Antenna jitter fix (pigpio).** `antennas.py` now prefers pigpio hardware PWM and
+  **falls back to pwmio** if pigpiod isn't running (so nothing breaks pre-install).
+  Install kit: `ops/pigpio/setup-pigpio.sh` — runs pigpiod with **`-t 0`** (PWM clock)
+  so it can't corrupt the **I2S speaker** (which uses the PCM clock — wrong timer can
+  DAMAGE the speaker). New `antenna_anim.py` scripts a switchable "free animation"
+  idle wiggle (manual triggers always override). Throw is unchanged (±500 µs).
+- **Web UI live camera view + camera settings (head puppet).** `FaceCamera` now also
+  publishes JPEG frames (`snapshot_jpeg`) and takes live libcamera controls; the phone
+  shows a live preview and exposure/gain/brightness/… sliders. The *one* FaceCamera
+  owns the picam and serves both tracking and the view — no second camera open.
+  Persists to `camera_controls` in duck_config on Save. Channel-order const
+  `JPEG_SWAP_RB` in `face_tracker.py` — flip it if the preview looks colour-swapped.
+- **Web UI walk tuning.** A **TUNE** bottom-sheet (both modes) exposes action_scale
+  (ramped, never stepped), gait offset, velocity_clip, max_motor_velocity, the full
+  governor, and the antenna free-anim toggle — all live, Save persists to duck_config.
+  Verified in-browser against `webui/mock_server.py` at iPhone-13-Pro size (390×844).
+
+New knobs use a generic `/api/setting {group,key,value}` + `ControlBus.consume_settings`
+path. New files to ship (already in `transfer.command` FILES): `antenna_anim.py`,
+`antennas.py` (was missing from the list!), `ops/pigpio/*`. Backed up to the fork
+(`fork` remote → maxmakesstuff, branch `feature/overnight-suite`) — see
+[[deploy-and-git-workflow]]. Commit history was rewritten to drop the Claude
+co-author trailer (user discloses in the README instead); do NOT re-add it.
 
 ---
 

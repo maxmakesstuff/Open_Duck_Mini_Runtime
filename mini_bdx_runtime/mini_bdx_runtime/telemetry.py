@@ -61,7 +61,8 @@ def build_state(mode, paused, battery, loop_hz, temp_c, fallen,
                 recording_state, recording_frames, control_hz,
                 features, flags, sounds, uptime_s,
                 imu=None, gait_offset=0.0, message="", imu_trim=None,
-                governor=None):
+                governor=None, walk_params=None, camera=None,
+                antenna_anim=None):
     """Assemble the /api/state dict. Pure -> unit-tested off-robot."""
     seconds = round(recording_frames / control_hz, 2) if control_hz else 0.0
     return {
@@ -71,6 +72,9 @@ def build_state(mode, paused, battery, loop_hz, temp_c, fallen,
         "imu": imu,                       # {"pitch":..,"roll":..} or None (attitude)
         "imu_trim": imu_trim,             # {"pitch":..,"roll":..} radians, or None
         "governor": governor,             # {"enabled":..,"scale":..,"severity":..} or None
+        "walk_params": walk_params,       # live walk-tuning values (walk mode) or None
+        "camera": camera,                 # {"available":..,"controls":{..}} or None
+        "antenna_anim": antenna_anim,     # free-animation on/off (bool) or None
         "loop_hz": round(float(loop_hz), 1),
         "temp_c": temp_c,
         "fallen": bool(fallen),

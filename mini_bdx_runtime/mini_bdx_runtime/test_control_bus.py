@@ -92,6 +92,44 @@ def test_trim_unknown_axis_ignored():
     assert bus.consume_trim() == (0.0, 0.0, False)
 
 
+def test_settings_accumulate_and_consume_resets():
+    bus = ControlBus()
+    bus.push_setting("walk", "action_scale", 0.2)
+    bus.push_setting("walk", "velocity_clip", True)
+    bus.push_setting("camera", "Brightness", -0.1)
+    settings, saves = bus.consume_settings()
+    assert settings == {"walk": {"action_scale": 0.2, "velocity_clip": True},
+                        "camera": {"Brightness": -0.1}}
+    assert saves == set()
+    # consuming again yields nothing (reset)
+    assert bus.consume_settings() == ({}, set())
+
+
+def test_settings_last_write_wins():
+    bus = ControlBus()
+    bus.push_setting("walk", "action_scale", 0.2)
+    bus.push_setting("walk", "action_scale", 0.25)
+    settings, _ = bus.consume_settings()
+    assert settings == {"walk": {"action_scale": 0.25}}
+
+
+def test_setting_save_flag_per_group():
+    bus = ControlBus()
+    bus.push_setting("walk", "action_scale", 0.2)
+    bus.push_setting_save("walk")
+    settings, saves = bus.consume_settings()
+    assert settings == {"walk": {"action_scale": 0.2}} and saves == {"walk"}
+    assert bus.consume_settings() == ({}, set())
+
+
+def test_setting_rejects_empty_group_or_key():
+    bus = ControlBus()
+    assert bus.push_setting("", "k", 1) is False
+    assert bus.push_setting("walk", "", 1) is False
+    assert bus.push_setting_save("") is False
+    assert bus.consume_settings() == ({}, set())
+
+
 def test_telemetry_roundtrip_is_copied():
     bus = ControlBus()
     snap = {"mode": "walk", "paused": False}
