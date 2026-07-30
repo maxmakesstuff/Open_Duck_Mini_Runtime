@@ -12,10 +12,16 @@ against the current code before acting.
 
 ---
 
-## Current state (last updated 2026-07-04, branch `feature/overnight-suite`)
+## Current state (last updated 2026-07-12, branch `feature/overnight-suite`)
 
-Two physical robots ("ducks"), identical hardware. The **reference duck** is tuned
-and walking well ("steady as hell", walks on carpet). What is LIVE on it:
+Two physical robots ("ducks"), identical hardware. **Both are now fully commissioned and
+walking stably.** Duck 2 was brought up end-to-end this session — full `transfer.command`,
+walk tuning seeded, Xbox BT auto-reconnect, captive portal, and its own IMU calibrate+trim
+— and the user confirmed it's **"as stable as our reference duck."** Each duck keeps its
+OWN calibration (`joints_offsets`, `imu_trim`, controller MAC) — **never copy one onto the
+other**; the mount tilt alone differs (ref roll≈0/pitch≈−2.6°, duck 2 roll≈+3.5°/pitch≈+0.3°).
+Duck 2's `~/duck_config.json` is not in git; see the [[deploy-and-git-workflow]] memory for
+its exact state. What is LIVE on the **reference duck**:
 
 - **Walk stability** — `~/duck_config.json`: `action_scale: 0.23`,
   `velocity_clip: true`, `stability_governor` enabled (conservative deadbands),
