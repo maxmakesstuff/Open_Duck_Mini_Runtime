@@ -164,17 +164,17 @@ so there's never a second camera open.
   (skippable, resumable): dependency check + `pip install -e .`, config creation, motor
   IDs, baseline PID, soft offsets, IMU calibrate + trim, walk-tuning seeding, expression
   features, Xbox reconnect, captive portal, and a final verification.
-- **`transfer.command`** — one-shot **deploy**: scp every runtime file + ops kit to a
-  duck (backing each up once on-device), and print an ordered bring-up checklist. Ideal
-  for a second duck.
+- **One-file deploy** — copy every runtime file + ops kit to a duck (backing each up
+  once on-device) and print an ordered bring-up checklist. Ideal for a second duck.
+  **`mac_transfer.command`** (macOS/Linux, double-click) and **`windows_transfer.ps1`**
+  (Windows, "Run with PowerShell") — both ship the same file set.
 - **Ops kits** (one-time system setup on the Pi):
   - [`ops/pigpio/`](../ops/pigpio/) — antenna jitter fix (pigpio, I2S-safe `-t 0`).
   - [`ops/captive-portal/`](../ops/captive-portal/) — join-Wi-Fi-→-console portal.
   - [`ops/bluetooth/`](../ops/bluetooth/) — Xbox controller **auto-reconnect** kit
     (fixes the pad dropping after a few minutes and needing a reboot).
-- **Docs.** A full **German operating manual**
-  ([`docs/Bedienungsanleitung.md`](Bedienungsanleitung.md)) with every mode + gamepad
-  map, plus the [Web UI API](webui-api.md) contract.
+- **Docs.** A full **[User Guide](USER_GUIDE.md)** with every mode + gamepad map + the
+  phone Web UI, plus the [Web UI API](webui-api.md) contract.
 
 ---
 

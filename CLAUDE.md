@@ -118,11 +118,16 @@ co-author trailer (user discloses in the README instead); do NOT re-add it.
 
 ## Deploying code
 
-- **`transfer.command`** (repo root, double-click / `bash transfer.command`) scp's every
-  file in its `FILES` list to the duck, backing each up once as `<file>.orig`, and prints
-  an ordered **new-duck bring-up checklist**. It deliberately does NOT touch
+- **`mac_transfer.command`** (repo root, double-click / `bash mac_transfer.command`;
+  formerly `transfer.command`) scp's every file in its `FILES` list to the duck via a
+  reused ControlMaster connection, backing each up once as `<file>.orig`, and prints an
+  ordered **new-duck bring-up checklist**. It deliberately does NOT touch
   `~/duck_config.json`. When you add/rename a runtime file, **add it to `FILES`** (the
   walk loop imports it at runtime — a missing entry = a broken duck).
+- **`windows_transfer.ps1`** is the Windows twin (PowerShell; built-in ssh/scp/tar). It
+  has **no ControlMaster** (unsupported on Windows OpenSSH), so it instead `tar`s the
+  files, `scp`s the one archive, and extracts it on the robot with the same `.orig`
+  backups → **2 password prompts**. **Keep its `$Files` list in sync with `FILES`.**
 - The web server is served **inside the walk/head-puppet process** — code changes to it
   (e.g. `web_control.py`) take effect only when the user **restarts the walk**.
 

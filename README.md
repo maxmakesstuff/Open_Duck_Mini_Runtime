@@ -52,8 +52,8 @@ The upstream project makes the duck **walk**. **Supercharged v2.5** makes it wal
   (pigpio) with switchable organic "free animation", walk/head **record & playback**,
   scanner sounds + a droid-voice generator.
 - 🛠️ **Painless bring-up** — a one-command guided **`first_time_setup.py`** wizard,
-  a `transfer.command` deploy, and one-time **ops kits** (pigpio, captive-portal, Xbox
-  auto-reconnect).
+  a one-file deploy (`mac_transfer.command` on macOS/Linux, `windows_transfer.ps1` on
+  Windows), and one-time **ops kits** (pigpio, captive-portal, Xbox auto-reconnect).
 
 ---
 
@@ -125,7 +125,7 @@ python scripts/apply_stability_defaults.py
 sprint · **D-pad ↑/↓** gait cadence · **D-pad ←** (hold 3 s) record, **D-pad →** play ·
 `X` projector · `B` sound · **RB + D-pad** live IMU-trim (**RB + Y** to save). In
 head-puppet, **D-pad ↑** toggles face-tracking. *(Full per-mode map in the
-[German manual](docs/Bedienungsanleitung.md).)*
+[User Guide](docs/USER_GUIDE.md).)*
 
 **Phone** — everything the gamepad does, plus **TUNE**: live sliders + **ⓘ** hints +
 **↺** reset for walk / camera / antenna, and the IMU-trim card.
@@ -138,7 +138,7 @@ head-puppet, **D-pad ↑** toggles face-tracking. *(Full per-mode map in the
 |---|---|
 | **[What's New in v2.5](docs/WHATS_NEW.md)** | Full breakdown of every change vs. upstream + config reference. |
 | [Base hardware setup](docs/BASE_SETUP.md) | Original one-time Pi/OS/servo/speaker setup. |
-| [Bedienungsanleitung (DE)](docs/Bedienungsanleitung.md) | German end-user manual: every mode + full gamepad map. |
+| [User Guide](docs/USER_GUIDE.md) | End-user manual: every mode, the full gamepad map, and the phone Web UI. |
 | [Web UI API](docs/webui-api.md) | The phone console's HTTP contract. |
 | [`ops/`](ops/) | One-time system kits: `pigpio/`, `captive-portal/`, `bluetooth/`. |
 | `CLAUDE.md` / `Open_Duck_Mini_Runtime/CLAUDE.md` | Architecture + operational playbook for contributors. |

@@ -16,6 +16,7 @@
 # feature flags) — use scripts/apply_stability_defaults.py to seed the walk tuning.
 #
 # Just double-click this file (it lives in the repo root).
+# On Windows, use windows_transfer.ps1 instead (same deploy, PowerShell).
 
 set -euo pipefail
 

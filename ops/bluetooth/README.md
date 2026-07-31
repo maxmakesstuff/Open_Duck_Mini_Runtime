@@ -71,7 +71,7 @@ after the last input. That is cause #1.
 
 ## Step 1 — Apply the OS fixes (idempotent installer)
 
-Copy this folder to the Pi (or use your existing `transfer.command`), then:
+Copy this folder to the Pi (or use `mac_transfer.command` / `windows_transfer.ps1`), then:
 
 ```bash
 cd ~/Open_Duck_Mini_Runtime/ops/bluetooth
