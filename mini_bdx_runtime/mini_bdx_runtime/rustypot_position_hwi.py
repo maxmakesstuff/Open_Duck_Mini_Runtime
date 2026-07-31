@@ -74,6 +74,7 @@ class HWI:
         self.kds = np.ones(len(self.joints)) * 0  # default kd
         self.low_torque_kps = np.ones(len(self.joints)) * 2
 
+        self.usb_port = usb_port
         self.io = rustypot.feetech(usb_port, 1000000)
 
     def set_kps(self, kps):
@@ -183,6 +184,61 @@ class HWI:
         if not vals:
             return None
         return round(max(vals), 1)
+
+    def read_battery_handoff(self):
+        """Read servo bus voltage (V, mean) + hottest temp (°C) via a brief BUS
+        HANDOFF: this rustypot build can't read those registers, so we momentarily
+        RELEASE the serial port, read them through pypot (which can), then ALWAYS
+        re-acquire rustypot so the control loop keeps the bus.
+
+        Costs ~0.2 s during which NO goal positions are sent — the servos simply hold
+        their last goal (torque + internal PID stay on; verified: position unchanged
+        across the handoff). So the CALLER must only invoke this when it's safe to skip
+        writes briefly (paused / idle) — NEVER mid-stride. Returns (voltage, temp),
+        each possibly None. Single-threaded use only (call it from the control loop)."""
+        import gc
+        ids = list(self.joints.values())
+        voltage = temp = None
+        try:
+            self.io = None            # drop the rustypot handle -> releases the port
+            gc.collect()
+            time.sleep(0.02)
+            from pypot.feetech import FeetechSTS3215IO
+            pio = FeetechSTS3215IO(self.usb_port, baudrate=1000000, use_sync_read=True)
+            try:
+                vv = pio.get_present_voltage(ids)
+                if vv:
+                    voltage = round(sum(vv) / len(vv) * self.VOLTAGE_SCALE, 2)
+                try:
+                    tt = pio.get_present_temperature(ids)
+                    if tt:
+                        temp = round(max(tt), 1)
+                except Exception:  # noqa: BLE001 - temp is a bonus, never block on it
+                    temp = None
+            finally:
+                try:
+                    pio.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                pio = None
+                gc.collect()
+                time.sleep(0.02)
+        except Exception as e:  # noqa: BLE001
+            print(f"[hwi] battery handoff read failed: {e}")
+        finally:
+            # ALWAYS re-acquire rustypot so control resumes, even if pypot errored.
+            if self.io is None:
+                try:
+                    self.io = rustypot.feetech(self.usb_port, 1000000)
+                except Exception:  # noqa: BLE001 - one retry; losing the bus is fatal
+                    time.sleep(0.1)
+                    self.io = rustypot.feetech(self.usb_port, 1000000)
+                try:  # re-assert gains (servos keep them across reconnect; belt+braces)
+                    self.io.set_kps(list(self.joints.values()), self.kps)
+                    self.io.set_kds(list(self.joints.values()), self.kds)
+                except Exception as e:  # noqa: BLE001
+                    print(f"[hwi] re-apply gains after handoff failed: {e}")
+        return voltage, temp
 
     def get_present_velocities(self, rad_s=True, ignore=[]):
         """

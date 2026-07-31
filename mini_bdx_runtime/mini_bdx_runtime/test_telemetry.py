@@ -52,6 +52,39 @@ def test_battery_monitor_survives_hwi_exception():
     assert c["voltage"] is None  # degrades, does not raise
 
 
+class FakeHandoffHWI:
+    """HWI exposing the new bus-handoff reader (voltage, temp)."""
+    def __init__(self, v, t):
+        self.v = v
+        self.t = t
+        self.reads = 0
+
+    def read_battery_handoff(self):
+        self.reads += 1
+        return self.v, self.t
+
+
+def test_battery_monitor_prefers_handoff_reader():
+    hwi = FakeHandoffHWI(7.6, 38.0)
+    bm = BatteryMonitor(period_s=2.0)
+    c = bm.sample(0.0, hwi)
+    assert hwi.reads == 1 and c["voltage"] == 7.6 and bm.temp_c == 38.0
+    assert 0 <= c["percent"] <= 100
+
+
+def test_battery_monitor_allow_read_false_holds_and_retries():
+    hwi = FakeHandoffHWI(7.6, 38.0)
+    bm = BatteryMonitor(period_s=2.0)
+    bm.sample(0.0, hwi)                       # reads (allow_read default True)
+    assert hwi.reads == 1
+    # throttle window elapsed, but reads NOT allowed -> hold cache, don't consume it
+    assert bm.sample(5.0, hwi, allow_read=False)["voltage"] == 7.6
+    assert hwi.reads == 1
+    # ...and it reads immediately once allowed again
+    bm.sample(5.1, hwi, allow_read=True)
+    assert hwi.reads == 2
+
+
 def test_build_state_shape():
     s = build_state(
         mode="walk", paused=False,

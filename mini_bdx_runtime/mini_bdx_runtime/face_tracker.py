@@ -118,6 +118,11 @@ CAMERA_CONTROLS = {
 }
 
 
+# Neutral defaults the Web UI "reset camera" restores (matches the UI's CAM_DEFAULTS).
+CAMERA_DEFAULTS = {"ae": True, "awb": True, "brightness": 0.0, "contrast": 1.0,
+                   "saturation": 1.0, "sharpness": 1.0, "gain": 1.0, "exposure": 10000}
+
+
 def _coerce_camera_controls(friendly):
     """Map a {friendly_key: value} dict to a {picamera2_control: value} dict,
     coercing types and clamping to the safe range. Unknown keys are dropped."""
@@ -549,6 +554,14 @@ class FaceCamera:
     def get_camera_controls(self):
         with self._lock:
             return dict(self._desired_controls)
+
+    def reset_camera_controls(self):
+        """Restore neutral camera defaults and clear the persisted overrides (so a
+        Save afterwards writes an empty camera_controls = 'auto')."""
+        self.set_camera_controls(CAMERA_DEFAULTS)
+        with self._lock:
+            self._desired_controls = {}
+        return {}
 
     def stop(self):
         self._running = False

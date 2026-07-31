@@ -736,6 +736,7 @@ function antennaSection(s){ const on=!!s.antenna_anim, sync=!!s.antenna_sync;
       help:"Gentle random idle wiggle when you're not holding the ears. <b>On</b> = the duck feels alive; <b>off</b> = ears rest still for precise hand control (via the triggers). Needs the pigpio jitter fix for steady ears."},on)}
     ${toggleRow("antenna",{k:"sync",name:"Sync ears (unison)",
       help:"<b>On</b> = both ears move together in unison; <b>off</b> = each ear wanders on its own (livelier, more independent)."},sync)}
+    <button class="btn treset" data-reset="antenna">↺ RESET ANTENNAS TO DEFAULTS</button>
     <button class="btn tsave" data-save="antenna">SAVE ANTENNA MODE TO DUCK</button></div>`; }
 
 function renderTune(mode){
@@ -750,6 +751,7 @@ function renderTune(mode){
     if(avail){
       CAM_CONTROLS.forEach(spec=>{ const v=cc[spec.k]!=null?cc[spec.k]:CAM_DEFAULTS[spec.k];
         html+= spec.type==="tgl"?toggleRow("camera",spec,!!v):sliderRow("camera",spec,v); });
+      html+=`<button class="btn treset" data-reset="camera">↺ RESET CAMERA TO DEFAULTS</button>`;
       html+=`<button class="btn tsave" data-save="camera">SAVE CAMERA TO DUCK</button>`;
     }
     html+=`</div>`+antennaSection(s);
@@ -792,8 +794,11 @@ function wireTune(){
   body.querySelectorAll('[data-reset]').forEach(b=>{
     b.addEventListener('click',()=>{ post("/api/setting",{group:b.dataset.reset,action:"reset"}); buzz(20);
       b.textContent="↺ RESETTING…";
-      // give the loop a couple of ticks to apply, then rebuild sliders from the new state
-      setTimeout(()=>{ if(tuneOpen) renderTune(curMode); }, 500); });
+      // give the loop a couple of ticks to apply, then rebuild the panel from the new
+      // state; if it's the camera panel, restart the live preview it just rebuilt.
+      setTimeout(()=>{ if(tuneOpen){ renderTune(curMode);
+        const cam=(lastState&&lastState.camera)||{};
+        if(curMode==="head_puppet" && cam.available) startCam(); } }, 500); });
   });
   // tap a control name (ⓘ) to reveal/hide its explanation
   body.querySelectorAll('.trow .name.tap').forEach(n=>{

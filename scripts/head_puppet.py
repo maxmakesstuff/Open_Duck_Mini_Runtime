@@ -274,8 +274,10 @@ def main():
     def publish_telemetry(now, state, recording):
         if web_bus is None or build_state is None:
             return
-        batt = battery_mon.sample(now, hwi) if battery_mon else {
-            "voltage": None, "percent": None, "charging": None}
+        # cache-only here (never trigger the bus handoff mid-publish); the actual
+        # voltage read happens at the LIVE-idle safe point at the loop's end.
+        batt = (battery_mon.sample(now, hwi, allow_read=False) if battery_mon else {
+            "voltage": None, "percent": None, "charging": None})
         rec_state = ("recording" if state == "RECORDING"
                      else "playing" if state == "PLAYBACK" else "idle")
         flags = {
@@ -301,10 +303,17 @@ def main():
         then attribute writes; camera set_controls only fires when something changed)."""
         if web_bus is None:
             return
-        settings, saves, _resets = web_bus.consume_settings()
+        settings, saves, resets = web_bus.consume_settings()
         cam = settings.get("camera")
         if cam and face_cam is not None:
             face_cam.set_camera_controls(cam)
+        if "camera" in resets and face_cam is not None:
+            face_cam.reset_camera_controls()
+            print("[head_puppet] camera controls reset to defaults")
+        if "antenna" in resets:
+            antenna_anim.set_enabled(True)
+            antenna_anim.set_sync(False)
+            print("[antennas] reset to defaults (free-anim on, sync off)")
         if "camera" in saves and face_cam is not None:
             try:
                 save_config_fields({"camera_controls": face_cam.get_camera_controls()})
@@ -605,6 +614,13 @@ def main():
                     reason = "60s reached" if len(recording) >= MAX_FRAMES else "stopped"
                     print(f"⏹ {reason}: stored {len(recording)} frames "
                           f"({len(recording) / CONTROL_HZ:.1f}s). DPAD-RIGHT to play.")
+
+            # Battery voltage read = a ~0.2 s bus handoff -> only when it's safe: LIVE
+            # and the operator isn't actively puppeting (so the head just holds briefly).
+            if (battery_mon is not None and state == "LIVE"
+                    and getattr(duck_config, "battery_servo_read", True)
+                    and not any_active_input(last_commands, buttons, left_trigger, right_trigger)):
+                battery_mon.sample(now, hwi, allow_read=True)
 
             time.sleep(DT)
 

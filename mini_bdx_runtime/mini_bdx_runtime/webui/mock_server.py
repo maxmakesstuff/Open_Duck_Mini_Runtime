@@ -186,6 +186,11 @@ def handle_setting(body):
         elif group == "imu_trim":
             TRIM["pitch"] = 0.0
             TRIM["roll"] = 0.0
+        elif group == "camera":
+            CAM.update({"ae": True, "awb": True, "exposure": 10000, "gain": 1.0,
+                        "brightness": 0.0, "contrast": 1.0, "saturation": 1.0, "sharpness": 1.0})
+        elif group == "antenna":
+            ANT.update({"free_anim": True, "sync": False})
         print("SETTING reset", group)
         return
     key, val = body.get("key"), body.get("value")

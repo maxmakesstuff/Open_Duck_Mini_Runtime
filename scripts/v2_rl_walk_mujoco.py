@@ -442,6 +442,10 @@ class RLWalk:
             self._reset_walk_settings()
         if "imu_trim" in resets:
             self._reset_imu_trim()
+        if "antenna" in resets:
+            self.antenna_anim.set_enabled(True)
+            self.antenna_anim.set_sync(False)
+            print("[antennas] RESET to defaults (free-anim on, sync off)")
         if "walk" in saves:
             self._save_walk_settings()
         if "antenna" in saves:
@@ -543,7 +547,11 @@ class RLWalk:
     def _publish_telemetry(self, now):
         if self.web_bus is None or build_state is None:
             return
-        batt = (self.battery_mon.sample(now, self.hwi) if self.battery_mon
+        # Voltage read = a ~0.2 s bus handoff -> only safe while PAUSED (servos hold).
+        # While walking we hold the last reading; it refreshes each time you pause.
+        allow_batt = self.paused and self.duck_config.battery_servo_read
+        batt = (self.battery_mon.sample(now, self.hwi, allow_read=allow_batt)
+                if self.battery_mon
                 else {"voltage": None, "percent": None, "charging": None})
         flags = {
             "projector_on": bool(self.duck_config.projector and self.projector.on),

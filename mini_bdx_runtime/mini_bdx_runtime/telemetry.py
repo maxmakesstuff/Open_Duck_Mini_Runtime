@@ -25,26 +25,48 @@ class BatteryMonitor:
     """Samples bus voltage + servo temp at most every `period_s` and derives
     percent + a heuristic charging flag. `hwi` may be None (-> all null)."""
 
-    def __init__(self, battery_cfg=None, period_s=2.0):
+    def __init__(self, battery_cfg=None, period_s=None):
         cfg = battery_cfg or {}
         self.v_min = float(cfg.get("v_min", DEFAULT_V_MIN))
         self.v_max = float(cfg.get("v_max", DEFAULT_V_MAX))
         self.charge = ChargeEstimator(v_full=float(cfg.get("v_full", DEFAULT_V_FULL)))
-        self.period_s = period_s
+        # Reading voltage now costs a ~0.2 s bus handoff (see HWI.read_battery_handoff),
+        # so sample it less often. Config "period_s" overrides; default 5 s.
+        self.period_s = float(period_s if period_s is not None
+                              else cfg.get("period_s", 5.0))
         self._last_t = None
         self._cache = {"voltage": None, "percent": None, "charging": None}
         self._temp_c = None
 
-    def sample(self, now, hwi):
+    def _read(self, hwi):
+        """(voltage, temp) via the bus-handoff reader if the HWI exposes one, else the
+        legacy direct reads (which return None on rustypot builds that can't)."""
+        handoff = getattr(hwi, "read_battery_handoff", None)
+        if handoff is not None:
+            return handoff()
+        return hwi.get_present_voltage(), hwi.get_present_temperature()
+
+    def sample(self, now, hwi, allow_read=True):
+        """Return the battery snapshot. Actually reads (an expensive bus handoff) only
+        when the throttle has elapsed AND `allow_read` is True — the caller passes
+        allow_read only when it's safe to briefly stop driving the servos (paused /
+        idle). Otherwise the last cached value is held."""
         if self._last_t is not None and (now - self._last_t) < self.period_s:
             return self._cache
+        if hwi is None or not allow_read:
+            # No hwi, or not safe to touch the bus now -> keep the last value. Don't
+            # advance _last_t when merely unsafe, so we read as soon as it's allowed.
+            if hwi is None:
+                self._last_t = now
+            return self._cache
         self._last_t = now
-        v = None
+        v, t = None, None
         try:
-            v = hwi.get_present_voltage() if hwi is not None else None
-            self._temp_c = hwi.get_present_temperature() if hwi is not None else None
+            v, t = self._read(hwi)
         except Exception:  # noqa: BLE001 - never let telemetry break the loop
-            v = None
+            v, t = None, None
+        if t is not None:
+            self._temp_c = t
         self._cache = {
             "voltage": v,
             "percent": estimate_percent(v, self.v_min, self.v_max),

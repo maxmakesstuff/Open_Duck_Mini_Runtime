@@ -96,6 +96,10 @@ class DuckConfig:
         self.web_ui = self.json_config.get("web_ui", True)
         self.web_port = int(self.json_config.get("web_port", 8080))
         self.battery = self.json_config.get("battery", {})
+        # Read pack voltage from the servos via a brief bus handoff (the Pi has no
+        # voltage sensor). Only happens when it's safe (paused walk / idle head).
+        # Set false to disable if it ever disturbs your setup.
+        self.battery_servo_read = bool(self.json_config.get("battery_servo_read", True))
 
         # Ear-antenna "free animation": a scripted idle wiggle (see antenna_anim.py).
         # On by default so the ears feel alive once the pigpio jitter fix removes the
