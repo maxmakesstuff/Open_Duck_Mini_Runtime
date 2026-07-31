@@ -57,6 +57,28 @@ steadier balance and a calmer, planted gait, no tip-overs.
 
 ---
 
+## 🦵 Walk mode vs. Head-puppet mode — pick it with a foot switch
+
+The duck runs **one of two programs**, and on the flashable image it **auto-starts** — you
+choose the mode with the **foot switches**, no keyboard or terminal needed:
+
+| Hold this foot (~5 s) | Starts |
+|---|---|
+| 🦶 **RIGHT foot switch** | **Walk mode** — the AI walking policy (drive, sprint, record). |
+| 🦶 **LEFT foot switch** | **Head-puppet mode** — puppet the head, live camera, face-tracking. |
+
+**How to do it:** power the duck on and let it finish booting, then **press and hold the
+foot switch for the mode you want for about 5 seconds**, until the duck springs to life in
+that mode. (The launcher re-checks the switches every ~5 s, so a firm few-second hold
+always catches it.) If you don't hold a foot, it simply waits. **To switch modes,** restart
+the duck and hold the other foot.
+
+> Running from source instead of the flashed image? Just start a mode directly —
+> `cd scripts && python v2_rl_walk_mujoco.py --onnx_model_path <path>/BEST_WALK_ONNX_2.onnx`
+> (walk) or `python head_puppet.py` (head-puppet). See [Quick start](#-quick-start).
+
+---
+
 ## ✨ Highlights
 
 - 🦿 **Rock-solid walking** — config-gated stability levers (action-scale, velocity

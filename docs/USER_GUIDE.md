@@ -18,7 +18,19 @@ This guide covers every way to operate the robot: the two on-robot programs, the
 
 Both programs also serve a **phone Web UI** (see [section 3](#3-the-phone-web-ui)).
 
-### Starting the robot (terminal on the robot)
+### Choosing a mode with the foot switches (flashed image / auto-start)
+
+On the flashable image the duck auto-starts and lets you pick the mode with the **foot
+switches** — no terminal:
+
+- 🦶 **Hold the RIGHT foot switch (~5 s)** → **Walk mode**.
+- 🦶 **Hold the LEFT foot switch (~5 s)** → **Head-puppet mode**.
+
+Power on, let it boot, then press and hold the foot for the mode you want for about 5
+seconds until it springs to life (it re-checks the switches every ~5 s). If you hold no
+foot, it just waits. To switch modes, restart and hold the other foot.
+
+### Starting the robot from source (terminal on the robot)
 
 ```bash
 cd ~/Open_Duck_Mini_Runtime/scripts
