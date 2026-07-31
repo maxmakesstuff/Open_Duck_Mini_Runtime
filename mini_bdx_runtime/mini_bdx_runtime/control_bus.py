@@ -56,6 +56,7 @@ class ControlBus:
         # (see consume_settings) and applies/persists them. Last write per key wins.
         self._settings = {}          # {group: {key: value, ...}, ...}
         self._setting_saves = set()  # {group, ...} groups asked to persist
+        self._setting_resets = set() # {group, ...} groups asked to reset to defaults
 
         self._telemetry = {}
 
@@ -117,17 +118,28 @@ class ControlBus:
             self._setting_saves.add(group)
         return True
 
+    def push_setting_reset(self, group):
+        """Queue a 'reset this group to known-good defaults' request."""
+        group = str(group)
+        if not group:
+            return False
+        with self._lock:
+            self._setting_resets.add(group)
+        return True
+
     # ------------------------------------------------------ robot <- web (read)
     def consume_settings(self):
-        """Return (settings, saves) accumulated since the last call and reset them.
-        `settings` is {group: {key: value}}, `saves` is a set of group names to
-        persist. Empty ({}, set()) when nothing is pending."""
+        """Return (settings, saves, resets) accumulated since the last call and clear
+        them. `settings` is {group: {key: value}}, `saves`/`resets` are sets of group
+        names to persist / reset. Empty ({}, set(), set()) when nothing is pending."""
         with self._lock:
             settings = self._settings
             saves = self._setting_saves
+            resets = self._setting_resets
             self._settings = {}
             self._setting_saves = set()
-            return settings, saves
+            self._setting_resets = set()
+            return settings, saves, resets
 
     def consume_trim(self):
         """Return (pitch_delta, roll_delta, save) accumulated since the last call,

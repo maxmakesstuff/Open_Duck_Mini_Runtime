@@ -253,6 +253,11 @@ input[type=range]::-moz-range-thumb{width:22px; height:22px; border:none; border
 .btn.tgl.on{background:linear-gradient(180deg,#4a3512,#2e2109); border-color:var(--amber); color:var(--amber)}
 .btn.tsave{width:100%; min-height:44px; margin-top:4px; border-color:var(--amber); color:var(--amber);
            letter-spacing:.14em; font-size:12px}
+.btn.treset{width:100%; min-height:38px; margin-top:8px; border-color:var(--line); color:var(--dim);
+            letter-spacing:.1em; font-size:11px}
+.btn.treset:active{color:var(--amber); border-color:var(--amber)}
+.btn.tb.reset{font-size:15px; min-width:42px; color:var(--dim); border-color:var(--line)}
+.btn.tb.reset:active{color:var(--amber); border-color:var(--amber)}
 .camwrap{position:relative; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:#000;
          aspect-ratio:1/1; max-width:300px; margin:0 auto 8px; width:100%; display:flex;
          align-items:center; justify-content:center}
@@ -261,6 +266,16 @@ input[type=range]::-moz-range-thumb{width:22px; height:22px; border:none; border
          background:rgba(16,14,10,.6); padding:2px 7px; border-radius:6px}
 .camstat.err{color:var(--alarm)}
 .thint{font-size:10.5px; color:var(--dim); line-height:1.45; margin-top:2px}
+/* tappable per-control help (ⓘ) */
+.tap{cursor:pointer}
+.ic{font-style:normal; text-transform:none; font-size:10px; color:var(--dim); border:1px solid var(--line);
+    border-radius:50%; width:15px; height:15px; display:inline-flex; align-items:center; justify-content:center;
+    line-height:1; vertical-align:middle}
+.open .ic{color:var(--amber); border-color:var(--amber)}
+.thelp{grid-column:1/-1; font-size:10.5px; line-height:1.5; color:var(--dim); background:var(--well);
+       border:1px solid var(--line); border-left:2px solid var(--amber); border-radius:8px; padding:7px 9px; margin-top:5px}
+.thelp.hidden{display:none}
+.thelp b{color:var(--amber); font-weight:400}
 </style>
 
 <div id="app">
@@ -333,15 +348,18 @@ input[type=range]::-moz-range-thumb{width:22px; height:22px; border:none; border
 
     <div class="trim hidden" id="trim">
       <span class="lbl">IMU trim</span>
-      <div class="trim-ax"><span class="lbl">pitch</span>
+      <div class="trim-ax"><span class="lbl tap" id="trimPitchLbl">pitch <i class="ic">i</i></span>
         <button class="btn tb" id="trimPitchDn" aria-label="pitch down">−</button>
         <b class="num" id="trimPitch">--</b><span class="lbl">°</span>
         <button class="btn tb" id="trimPitchUp" aria-label="pitch up">+</button></div>
-      <div class="trim-ax"><span class="lbl">roll</span>
+      <div class="trim-ax"><span class="lbl tap" id="trimRollLbl">roll <i class="ic">i</i></span>
         <button class="btn tb" id="trimRollDn" aria-label="roll down">−</button>
         <b class="num" id="trimRoll">--</b><span class="lbl">°</span>
         <button class="btn tb" id="trimRollUp" aria-label="roll up">+</button></div>
+      <button class="btn tb reset" id="trimReset" aria-label="reset trim to zero">↺</button>
       <button class="btn tb save" id="trimSave">SAVE</button>
+      <div class="thelp hidden" id="hlp_pitch" style="flex-basis:100%">Cancels a forward/back lean the IMU reads at rest (radians). Nudge <b>+</b> if the duck tips/falls backward, <b>−</b> if it tips forward — until it stands square. Then validate by walking; if it walks worse, set it back.</div>
+      <div class="thelp hidden" id="hlp_roll" style="flex-basis:100%">Cancels a left/right lean the IMU reads at rest (radians). Nudge <b>+</b> if it leans/falls to one side, <b>−</b> for the other. Small steps; check by walking. Roll should sit near 0 on a symmetric duck.</div>
     </div>
 
     <div class="ant" id="ant">
@@ -532,6 +550,11 @@ function wireTrim(){
   $("trimRollUp").addEventListener("click",()=>nudge("roll",TRIM_STEP));
   $("trimRollDn").addEventListener("click",()=>nudge("roll",-TRIM_STEP));
   $("trimSave").addEventListener("click",()=>{ post("/api/trim",{action:"save"}); buzz(20); });
+  $("trimReset").addEventListener("click",()=>{ post("/api/setting",{group:"imu_trim",action:"reset"}); buzz(20); });
+  // tappable pitch/roll explanations
+  const tHelp=(lblId,hlpId)=>{ const l=$(lblId),h=$(hlpId); if(!l||!h)return;
+    l.addEventListener("click",()=>{ const hid=h.classList.toggle("hidden"); l.classList.toggle("open",!hid); buzz(5); }); };
+  tHelp("trimPitchLbl","hlp_pitch"); tHelp("trimRollLbl","hlp_roll");
 }
 wireTrim();
 
@@ -639,27 +662,46 @@ function setPlay(id,on){ const e=$(id); if(e) e.classList.toggle("play",!!on); }
 
 /* ================= TUNE panel (walk tuning · camera · antennas) ================= */
 const WALK_CONTROLS=[
-  {k:"action_scale",name:"Action scale",min:0,max:0.6,step:0.01},
-  {k:"gait_offset",name:"Gait freq offset",min:-0.5,max:0.5,step:0.01},
-  {k:"max_motor_velocity_rad_s",name:"Max motor vel",min:0.5,max:12,step:0.1,unit:"rad/s"},
-  {k:"velocity_clip",name:"Velocity clip",type:"tgl"},
-  {k:"governor_enabled",name:"Stability governor",type:"tgl"},
-  {k:"governor_tilt_lo_deg",name:"Gov tilt lo",min:0,max:45,step:0.5,unit:"°"},
-  {k:"governor_tilt_hi_deg",name:"Gov tilt hi",min:0,max:60,step:0.5,unit:"°"},
-  {k:"governor_rate_lo",name:"Gov rate lo",min:0,max:20,step:0.1},
-  {k:"governor_rate_hi",name:"Gov rate hi",min:0,max:30,step:0.1},
-  {k:"governor_floor",name:"Gov floor speed",min:0,max:1,step:0.05},
-  {k:"governor_smooth",name:"Gov smoothing",min:0.05,max:1,step:0.05},
+  {k:"action_scale",name:"Action scale",min:0,max:0.6,step:0.01,
+   help:"How far the policy swings the legs from the standing pose each step. <b>Lower</b> = smaller, calmer steps — steadier but less lively. <b>Higher</b> = bigger, springier strides — livelier but can get twitchy/unstable. Eases in smoothly, no jerk."},
+  {k:"gait_offset",name:"Gait freq offset",min:-0.5,max:0.5,step:0.01,
+   help:"Nudges the stepping cadence. <b>Lower</b> (more negative) = slower steps; <b>higher</b> = faster steps. Tune until the feet stop scuffing or stamping and the rhythm looks natural."},
+  {k:"max_motor_velocity_rad_s",name:"Max motor vel",min:0.5,max:12,step:0.1,unit:"rad/s",
+   help:"Speed limit for each leg joint per tick (only bites when Velocity clip is ON). <b>Lower</b> = gentler, smoother, but can lag fast moves. <b>Higher</b> = allows quicker joint moves."},
+  {k:"velocity_clip",name:"Velocity clip",type:"tgl",
+   help:"Caps how far any joint can jump in one control tick — a safety net against a policy spike snapping a servo. <b>On</b> = smoother & safer; <b>off</b> = raw policy output. Uses the Max motor vel limit above."},
+  {k:"governor_enabled",name:"Stability governor",type:"tgl",
+   help:"Near-fall safety layer: as the duck starts to tip it eases off your drive commands so it can recover in place instead of driving itself over. <b>On</b> = safer on rough ground; it rarely acts on flat ground."},
+  {k:"governor_tilt_lo_deg",name:"Gov tilt lo",min:0,max:45,step:0.5,unit:"°",
+   help:"Lean angle where the governor STARTS helping. <b>Lower</b> = reacts earlier (more cautious); <b>higher</b> = waits for a bigger lean before stepping in."},
+  {k:"governor_tilt_hi_deg",name:"Gov tilt hi",min:0,max:60,step:0.5,unit:"°",
+   help:"Lean angle for FULL slow-down. <b>Lower</b> = clamps down hard sooner; <b>higher</b> = only fully backs off at a big lean."},
+  {k:"governor_rate_lo",name:"Gov rate lo",min:0,max:20,step:0.1,
+   help:"How fast it is tipping (rad/s) where helping STARTS. <b>Lower</b> = reacts to gentle wobble; <b>higher</b> = ignores small wobbles."},
+  {k:"governor_rate_hi",name:"Gov rate hi",min:0,max:30,step:0.1,
+   help:"Tip speed for FULL slow-down. <b>Lower</b> = strong reaction to fast tips sooner; <b>higher</b> = only on very fast tips."},
+  {k:"governor_floor",name:"Gov floor speed",min:0,max:1,step:0.05,
+   help:"Slowest the governor will throttle your drive to (0–1). <b>Lower</b> = can nearly stop the duck when tipping (max caution); <b>higher</b> = keeps more of your speed while it helps."},
+  {k:"governor_smooth",name:"Gov smoothing",min:0.05,max:1,step:0.05,
+   help:"How snappily the governor reacts. <b>Lower</b> = smoother, less chatter but slower; <b>higher</b> = quicker response but can jitter."},
 ];
 const CAM_CONTROLS=[
-  {k:"ae",name:"Auto exposure",type:"tgl"},
-  {k:"exposure",name:"Exposure",min:100,max:33000,step:100,unit:"µs"},
-  {k:"gain",name:"Gain",min:1,max:16,step:0.1,unit:"×"},
-  {k:"awb",name:"Auto white balance",type:"tgl"},
-  {k:"brightness",name:"Brightness",min:-1,max:1,step:0.05},
-  {k:"contrast",name:"Contrast",min:0,max:2,step:0.05},
-  {k:"saturation",name:"Saturation",min:0,max:2,step:0.05},
-  {k:"sharpness",name:"Sharpness",min:0,max:2,step:0.05},
+  {k:"ae",name:"Auto exposure",type:"tgl",
+   help:"Auto-exposure. Note: your ov5647 sensor ignores this toggle — set Exposure & Gain by hand. <b>Off</b> = manual exposure/gain."},
+  {k:"exposure",name:"Exposure",min:100,max:33000,step:100,unit:"µs",
+   help:"How long the sensor gathers light per frame (µs). <b>Higher</b> = brighter but more motion blur; <b>lower</b> = darker but crisper. Manual only."},
+  {k:"gain",name:"Gain",min:1,max:16,step:0.1,unit:"×",
+   help:"Signal amplification. <b>Higher</b> = brighter in the dark but grainier/noisier; <b>lower</b> = cleaner but darker."},
+  {k:"awb",name:"Auto white balance",type:"tgl",
+   help:"Auto white balance — corrects colour tint for the room light. <b>On</b> = adapts automatically; <b>off</b> = fixed."},
+  {k:"brightness",name:"Brightness",min:-1,max:1,step:0.05,
+   help:"Lifts or lowers the whole image. <b>Higher</b> = brighter, <b>lower</b> = darker."},
+  {k:"contrast",name:"Contrast",min:0,max:2,step:0.05,
+   help:"Gap between lights and darks. <b>Higher</b> = punchier; <b>lower</b> = flatter/softer."},
+  {k:"saturation",name:"Saturation",min:0,max:2,step:0.05,
+   help:"Colour intensity. <b>Higher</b> = vivid; <b>lower</b> = toward grey."},
+  {k:"sharpness",name:"Sharpness",min:0,max:2,step:0.05,
+   help:"Edge crispness. <b>Higher</b> = crisper (can look harsh); <b>lower</b> = softer."},
 ];
 const CAM_DEFAULTS={ae:true,awb:true,exposure:10000,gain:1,brightness:0,contrast:1,saturation:1,sharpness:1};
 
@@ -669,14 +711,18 @@ function fmtVal(spec,v){ const d=spec.dec!=null?spec.dec:decs(spec.step);
 function fmtValFromInput(inp,v){ const d=+inp.dataset.dec,u=inp.dataset.unit,sign=inp.dataset.sign==="1";
   let s=Number(v).toFixed(d); if(sign&&v>=0)s="+"+s; return s+(u?(" "+u):""); }
 
+function nameCell(spec){ return `<span class="name${spec.help?" tap":""}">${spec.name}${spec.help?' <i class="ic">i</i>':""}</span>`; }
+function helpCell(spec){ return spec.help?`<div class="thelp hidden">${spec.help}</div>`:""; }
 function sliderRow(group,spec,val){ const id=`tc_${group}_${spec.k}`,d=spec.dec!=null?spec.dec:decs(spec.step);
-  return `<div class="trow"><span class="name">${spec.name}</span>
+  return `<div class="trow">${nameCell(spec)}
     <span class="tval" id="${id}_v">${fmtVal(spec,val)}</span>
     <input type="range" id="${id}" data-group="${group}" data-key="${spec.k}" data-unit="${spec.unit||""}"
-      data-dec="${d}" data-sign="${spec.min<0?1:0}" min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${val}"></div>`; }
+      data-dec="${d}" data-sign="${spec.min<0?1:0}" min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${val}">
+    ${helpCell(spec)}</div>`; }
 function toggleRow(group,spec,on){ const id=`tc_${group}_${spec.k}`;
-  return `<div class="trow tog"><span class="name">${spec.name}</span>
-    <button class="btn tgl${on?" on":""}" id="${id}" data-group="${group}" data-key="${spec.k}" data-on="${on?1:0}">${on?"ON":"OFF"}</button></div>`; }
+  return `<div class="trow tog">${nameCell(spec)}
+    <button class="btn tgl${on?" on":""}" id="${id}" data-group="${group}" data-key="${spec.k}" data-on="${on?1:0}">${on?"ON":"OFF"}</button>
+    ${helpCell(spec)}</div>`; }
 
 function readWalk(k,wp,gov){
   if(k==="action_scale") return wp.action_scale_target!=null?wp.action_scale_target:(wp.action_scale!=null?wp.action_scale:0.25);
@@ -686,9 +732,10 @@ function readWalk(k,wp,gov){
 }
 function antennaSection(s){ const on=!!s.antenna_anim, sync=!!s.antenna_sync;
   return `<div class="tsec"><span class="lbl">Ear antennas</span>
-    ${toggleRow("antenna",{k:"free_anim",name:"Free animation"},on)}
-    ${toggleRow("antenna",{k:"sync",name:"Sync ears (unison)"},sync)}
-    <div class="thint">Free animation: gentle random idle wiggle when you're not holding the ears (off = precise hand control, ears rest still). Sync: on = both ears move together; off = each ear wanders on its own. Needs the pigpio jitter fix for steady ears.</div>
+    ${toggleRow("antenna",{k:"free_anim",name:"Free animation",
+      help:"Gentle random idle wiggle when you're not holding the ears. <b>On</b> = the duck feels alive; <b>off</b> = ears rest still for precise hand control (via the triggers). Needs the pigpio jitter fix for steady ears."},on)}
+    ${toggleRow("antenna",{k:"sync",name:"Sync ears (unison)",
+      help:"<b>On</b> = both ears move together in unison; <b>off</b> = each ear wanders on its own (livelier, more independent)."},sync)}
     <button class="btn tsave" data-save="antenna">SAVE ANTENNA MODE TO DUCK</button></div>`; }
 
 function renderTune(mode){
@@ -712,6 +759,7 @@ function renderTune(mode){
     WALK_CONTROLS.forEach(spec=>{ const v=readWalk(spec.k,wp,gov);
       html+= spec.type==="tgl"?toggleRow("walk",spec,!!v):sliderRow("walk",spec,v); });
     html+=`<div class="thint">Action scale ramps in smoothly (lower = steadier, higher = livelier). All edits are live; press Save to keep them across restarts.</div>
+      <button class="btn treset" data-reset="walk">↺ RESET TO KNOWN-GOOD DEFAULTS</button>
       <button class="btn tsave" data-save="walk">SAVE WALK TUNING TO DUCK</button></div>`+antennaSection(s);
   }
   body.innerHTML=html;
@@ -740,6 +788,17 @@ function wireTune(){
   body.querySelectorAll('[data-save]').forEach(b=>{
     b.addEventListener('click',()=>{ post("/api/setting",{group:b.dataset.save,action:"save"}); buzz(20);
       const t=b.textContent; b.textContent="SAVED ✓"; setTimeout(()=>{b.textContent=t;},1200); });
+  });
+  body.querySelectorAll('[data-reset]').forEach(b=>{
+    b.addEventListener('click',()=>{ post("/api/setting",{group:b.dataset.reset,action:"reset"}); buzz(20);
+      b.textContent="↺ RESETTING…";
+      // give the loop a couple of ticks to apply, then rebuild sliders from the new state
+      setTimeout(()=>{ if(tuneOpen) renderTune(curMode); }, 500); });
+  });
+  // tap a control name (ⓘ) to reveal/hide its explanation
+  body.querySelectorAll('.trow .name.tap').forEach(n=>{
+    const help=n.parentElement.querySelector('.thelp'); if(!help) return;
+    n.addEventListener('click',()=>{ const hid=help.classList.toggle('hidden'); n.classList.toggle('open',!hid); buzz(5); });
   });
   applyCamDisable();
 }

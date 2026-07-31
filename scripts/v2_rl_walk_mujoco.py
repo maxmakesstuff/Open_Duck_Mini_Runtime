@@ -21,6 +21,7 @@ from mini_bdx_runtime.stability_governor import (
     governor_from_config, tilt_angle_deg, tilt_rate,
 )
 from mini_bdx_runtime.antenna_anim import AntennaAnimator
+from mini_bdx_runtime.walk_defaults import WALK_TUNING_DEFAULTS, IMU_TRIM_DEFAULTS
 # Optional: Web UI + scanner sound. The walk still runs if these are absent.
 try:
     from mini_bdx_runtime.control_bus import ControlBus
@@ -432,11 +433,15 @@ class RLWalk:
         one lock, then plain attribute writes (no hardware in the hot path)."""
         if self.web_bus is None:
             return
-        settings, saves = self.web_bus.consume_settings()
+        settings, saves, resets = self.web_bus.consume_settings()
         if settings.get("walk"):
             self._apply_walk_settings(settings["walk"])
         if settings.get("antenna"):
             self._apply_antenna_settings(settings["antenna"])
+        if "walk" in resets:
+            self._reset_walk_settings()
+        if "imu_trim" in resets:
+            self._reset_imu_trim()
         if "walk" in saves:
             self._save_walk_settings()
         if "antenna" in saves:
@@ -494,6 +499,31 @@ class RLWalk:
         }
         backup = save_config_fields(fields)
         print(f"[walk] SAVED walk tuning {fields} (backup {backup})")
+
+    def _reset_walk_settings(self):
+        """Load the known-good walk-tuning defaults live (shared source of truth;
+        NOT persisted until the user hits Save). action_scale still ramps in."""
+        d = WALK_TUNING_DEFAULTS
+        self._action_scale_target = float(d["action_scale"])
+        self.phase_frequency_factor_offset = float(d["phase_frequency_factor_offset"])
+        self.velocity_clip = bool(d["velocity_clip"])
+        self.max_motor_velocity = float(d["max_motor_velocity_rad_s"])
+        g = d["stability_governor"]
+        self.governor.enabled = bool(g["enabled"])
+        self.governor.tilt_lo_deg = float(g["tilt_lo_deg"])
+        self.governor.tilt_hi_deg = float(g["tilt_hi_deg"])
+        self.governor.rate_lo = float(g["rate_lo"])
+        self.governor.rate_hi = float(g["rate_hi"])
+        self.governor.floor = float(g["floor"])
+        self.governor.smooth = float(g["smooth"])
+        print(f"[walk] RESET walk tuning to known-good defaults {d} (Save to persist)")
+
+    def _reset_imu_trim(self):
+        """Reset the live IMU mounting trim to the neutral 0 baseline (not persisted
+        until Save). Applies instantly (the IMU worker re-reads it each loop)."""
+        self.imu.pitch_trim = float(IMU_TRIM_DEFAULTS["pitch"])
+        self.imu.roll_trim = float(IMU_TRIM_DEFAULTS["roll"])
+        print("[trim] RESET imu trim to 0 (nudge to re-tune, Save to persist)")
 
     def _apply_antenna_settings(self, d):
         if "free_anim" in d:

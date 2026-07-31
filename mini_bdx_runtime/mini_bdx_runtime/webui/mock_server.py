@@ -176,6 +176,18 @@ def handle_setting(body):
     if body.get("action") == "save":
         print("SETTING save", group)
         return
+    if body.get("action") == "reset":
+        if group == "walk":
+            WALK.update({"action_scale": 0.23, "action_scale_target": 0.23,
+                         "velocity_clip": True, "max_motor_velocity_rad_s": 5.24})
+            WALK["governor"] = {"enabled": True, "tilt_lo_deg": 10.0, "tilt_hi_deg": 25.0,
+                                "rate_lo": 2.5, "rate_hi": 7.0, "floor": 0.35, "smooth": 0.3}
+            GAIT["v"] = -0.10
+        elif group == "imu_trim":
+            TRIM["pitch"] = 0.0
+            TRIM["roll"] = 0.0
+        print("SETTING reset", group)
+        return
     key, val = body.get("key"), body.get("value")
     if group == "walk":
         if key == "gait_offset":

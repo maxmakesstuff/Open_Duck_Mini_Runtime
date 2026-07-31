@@ -97,19 +97,19 @@ def test_settings_accumulate_and_consume_resets():
     bus.push_setting("walk", "action_scale", 0.2)
     bus.push_setting("walk", "velocity_clip", True)
     bus.push_setting("camera", "Brightness", -0.1)
-    settings, saves = bus.consume_settings()
+    settings, saves, resets = bus.consume_settings()
     assert settings == {"walk": {"action_scale": 0.2, "velocity_clip": True},
                         "camera": {"Brightness": -0.1}}
-    assert saves == set()
+    assert saves == set() and resets == set()
     # consuming again yields nothing (reset)
-    assert bus.consume_settings() == ({}, set())
+    assert bus.consume_settings() == ({}, set(), set())
 
 
 def test_settings_last_write_wins():
     bus = ControlBus()
     bus.push_setting("walk", "action_scale", 0.2)
     bus.push_setting("walk", "action_scale", 0.25)
-    settings, _ = bus.consume_settings()
+    settings, _, _ = bus.consume_settings()
     assert settings == {"walk": {"action_scale": 0.25}}
 
 
@@ -117,9 +117,19 @@ def test_setting_save_flag_per_group():
     bus = ControlBus()
     bus.push_setting("walk", "action_scale", 0.2)
     bus.push_setting_save("walk")
-    settings, saves = bus.consume_settings()
+    settings, saves, resets = bus.consume_settings()
     assert settings == {"walk": {"action_scale": 0.2}} and saves == {"walk"}
-    assert bus.consume_settings() == ({}, set())
+    assert resets == set()
+    assert bus.consume_settings() == ({}, set(), set())
+
+
+def test_setting_reset_flag_per_group():
+    bus = ControlBus()
+    bus.push_setting_reset("walk")
+    bus.push_setting_reset("imu_trim")
+    settings, saves, resets = bus.consume_settings()
+    assert settings == {} and saves == set() and resets == {"walk", "imu_trim"}
+    assert bus.consume_settings() == ({}, set(), set())
 
 
 def test_setting_rejects_empty_group_or_key():
@@ -127,7 +137,8 @@ def test_setting_rejects_empty_group_or_key():
     assert bus.push_setting("", "k", 1) is False
     assert bus.push_setting("walk", "", 1) is False
     assert bus.push_setting_save("") is False
-    assert bus.consume_settings() == ({}, set())
+    assert bus.push_setting_reset("") is False
+    assert bus.consume_settings() == ({}, set(), set())
 
 
 def test_telemetry_roundtrip_is_copied():

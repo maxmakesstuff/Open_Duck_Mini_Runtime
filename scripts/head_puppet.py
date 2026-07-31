@@ -301,7 +301,7 @@ def main():
         then attribute writes; camera set_controls only fires when something changed)."""
         if web_bus is None:
             return
-        settings, saves = web_bus.consume_settings()
+        settings, saves, _resets = web_bus.consume_settings()
         cam = settings.get("camera")
         if cam and face_cam is not None:
             face_cam.set_camera_controls(cam)

@@ -17,22 +17,13 @@ import os
 
 # import the installed package (works run as scripts/apply_stability_defaults.py)
 from mini_bdx_runtime.duck_config import save_config_fields
+# single source of truth, shared with the Web UI "reset to defaults" button
+from mini_bdx_runtime.walk_defaults import WALK_TUNING_DEFAULTS
 
 CFG = os.path.expanduser("~/duck_config.json")
 
-# The reference duck's known-good walk tuning (see docs / commit history).
-WALK_TUNING = {
-    "action_scale": 0.23,                 # policy residual scale (0.25 default)
-    "phase_frequency_factor_offset": -0.10,   # slower cadence = steadier
-    "velocity_clip": True,                 # per-tick slew safety net
-    "max_motor_velocity_rad_s": 5.24,
-    "stability_governor": {
-        "enabled": True,
-        "tilt_lo_deg": 10.0, "tilt_hi_deg": 25.0,
-        "rate_lo": 2.5, "rate_hi": 7.0,
-        "floor": 0.35, "smooth": 0.3,
-    },
-}
+# The reference duck's known-good walk tuning (see mini_bdx_runtime/walk_defaults.py).
+WALK_TUNING = WALK_TUNING_DEFAULTS
 
 # Per-robot calibration that MUST NOT be overwritten by this seeding.
 CALIBRATION_KEYS = ("joints_offsets", "imu_trim", "imu_upside_down",

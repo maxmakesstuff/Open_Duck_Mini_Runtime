@@ -89,8 +89,12 @@ def handle_api(method, path, body_bytes, bus, now):
         except (ValueError, TypeError):
             return 400, "application/json", _json_bytes({"ok": False, "error": "bad json"})
         group = str(d.get("group", ""))
-        if str(d.get("action", "")) == "save":
+        action = str(d.get("action", ""))
+        if action == "save":
             ok = bus.push_setting_save(group)
+            return (200 if ok else 400), "application/json", _json_bytes({"ok": bool(ok)})
+        if action == "reset":
+            ok = bus.push_setting_reset(group)
             return (200 if ok else 400), "application/json", _json_bytes({"ok": bool(ok)})
         ok = bus.push_setting(group, str(d.get("key", "")), d.get("value"))
         return (200 if ok else 400), "application/json", _json_bytes({"ok": bool(ok)})

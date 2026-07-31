@@ -25,6 +25,7 @@ import control_bus as _control_bus           # noqa: E402
 import telemetry as _telemetry               # noqa: E402
 import stability_governor as _stability_governor  # noqa: E402
 import antenna_anim as _antenna_anim         # noqa: E402
+import walk_defaults as _walk_defaults       # noqa: E402
 
 
 def _install_fakes():
@@ -35,7 +36,8 @@ def _install_fakes():
     for short, mod in [("walk_record", _walk_record), ("fall_detector", _fall_detector),
                        ("control_bus", _control_bus), ("telemetry", _telemetry),
                        ("stability_governor", _stability_governor),
-                       ("antenna_anim", _antenna_anim)]:
+                       ("antenna_anim", _antenna_anim),
+                       ("walk_defaults", _walk_defaults)]:
         sys.modules[f"mini_bdx_runtime.{short}"] = mod
     _D = type("Dummy", (), {})
     for name, attrs in [
