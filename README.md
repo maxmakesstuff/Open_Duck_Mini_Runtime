@@ -1,182 +1,166 @@
-# Open Duck Mini Runtime
+<h1 align="center">🦆⚡ Open Duck Supercharged v2.5</h1>
 
-## Raspberry Pi zero 2W setup
+<p align="center">
+  <b>On-robot runtime for the Open Duck Mini — now with rock-solid walking,<br>
+  a phone control console, live tuning, and a stack of quality-of-life features.</b>
+</p>
 
-### Install Raspberry Pi OS
+<p align="center">
+  <i>A supercharged fork of</i>
+  <a href="https://github.com/apirrone/Open_Duck_Mini_Runtime"><b>apirrone/Open_Duck_Mini_Runtime</b></a>
+  <i>(branch <code>v2</code>).</i>
+</p>
 
-Download Raspberry Pi OS Lite (64-bit) from here : https://www.raspberrypi.com/software/operating-systems/
+<p align="center">
+  <img src="docs/images/walk-console.png"  width="240" alt="Walk control console">
+  <img src="docs/images/head-camera.png"   width="240" alt="Live camera view + settings">
+  <img src="docs/images/walk-tuning.png"   width="240" alt="Live walk tuning with tap-to-explain hints">
+</p>
 
-Follow the instructions here to install the OS on the SD card : https://www.raspberrypi.com/documentation/computers/getting-started.html
+---
 
-With the Raspberry Pi Imager, you can pre-configure session, wifi and ssh. Do it like below :
+## What is this?
 
-![imager_setup](https://github.com/user-attachments/assets/7a4987b2-de83-41dd-ab7f-585259685f16)
+The **Open Duck Mini** is a small BDX-style bipedal "duck" robot. This repository is the
+**runtime that lives on the robot's Raspberry Pi**: it runs a single imitation-RL
+locomotion policy (exported to ONNX) at 50 Hz, driving 14 Feetech serial-bus servos,
+with an Xbox gamepad for teleop and optional expression peripherals (camera, speaker,
+antennas, projector, eyes).
 
-> Tip: I configure the rasp to connect to my phone's hotspot, this way I can connect to it from anywhere.
+The upstream project makes the duck **walk**. **Supercharged v2.5** makes it walk
+*steadily*, and wraps the whole thing in a phone-first, newcomer-friendly experience.
+👉 **Full change log: [docs/WHATS_NEW.md](docs/WHATS_NEW.md).**
 
-### Setup SSH (If not setup during the installation)
+---
 
-When first booting on the rasp, you will need to connect a screen and a keyboard. The first thing you should do is connect to a wifi network and enable SSH.
+## ✨ Highlights
 
-To do so, you can follow this guide : https://www.raspberrypi.com/documentation/computers/configuration.html#setting-up-wifi
+- 🦿 **Rock-solid walking** — config-gated stability levers (action-scale, velocity
+  clip, a near-fall **stability governor**, cadence tuning), real **IMU mounting-trim**
+  correction, and **fall-detection auto-pause**.
+- 📱 **Phone control console** — a self-contained, dependency-free Web UI served off the
+  robot. Join the duck's Wi-Fi and it **pops up automatically** (captive portal). Live
+  attitude horizon, battery, twin joysticks, every button.
+- 🎛️ **Live tuning from your phone** — sliders for every walk / camera / antenna
+  parameter, with **ⓘ tap-to-explain hints** and **↺ reset-to-known-good-defaults** on
+  each section. Nothing persists until you press Save.
+- 🔋 **Battery % that actually works** — read from the servos via a safe bus handoff
+  (the Pi has no voltage sensor).
+- 📷 **Live camera view + tuning** — see the feed on your phone, dial in exposure/gain/
+  white-balance for the room.
+- 🙂 **Expression** — face tracking with greet/scan/farewell, **jitter-free antennas**
+  (pigpio) with switchable organic "free animation", walk/head **record & playback**,
+  scanner sounds + a droid-voice generator.
+- 🛠️ **Painless bring-up** — a one-command guided **`first_time_setup.py`** wizard,
+  a `transfer.command` deploy, and one-time **ops kits** (pigpio, captive-portal, Xbox
+  auto-reconnect).
 
-Then, you can connect to your rasp using SSH without having to plug a screen and a keyboard.
+---
 
-### Update the system and install necessary stuff
+## 📱 The console
 
-```bash
-sudo apt update
-sudo apt upgrade
-sudo apt install git
-sudo apt install python3-pip
-sudo apt install python3-virtualenvwrapper
-(optional) sudo apt install python3-picamzero
+<table>
+<tr>
+<td width="50%" valign="top">
 
-```
+**Walk mode** — attitude horizon, battery, loop-rate/temperature, twin sticks (drive +
+turn), gait & sprint, record/playback, and an **IMU-trim** card.
 
-Add this to the end of the `.bashrc`:
+</td>
+<td width="50%" valign="top">
 
-```bash
-export WORKON_HOME=$HOME/.virtualenvs
-export PROJECT_HOME=$HOME/Devel
-source /usr/share/virtualenvwrapper/virtualenvwrapper.sh
-```
+**Head-puppet mode** — puppet the head with the sticks, toggle **face-tracking**, and
+open **TUNE** for the **live camera view** + camera settings and the antenna controls.
 
-### Enable I2C
+</td>
+</tr>
+</table>
 
-`sudo raspi-config` -> `Interface Options` -> `I2C`
+No app, no internet, no pairing: a stdlib HTTP server on the robot serves one
+self-contained page. Preview it on your laptop with **no robot** via
+`mini_bdx_runtime/mini_bdx_runtime/webui/mock_server.py`.
 
-TODO set 400KHz ?
+---
 
-### Set the usbserial latency timer
+## 🚀 Quick start
 
-```bash
-cd  /etc/udev/rules.d/
-sudo touch 99-usb-serial.rules
-sudo nano 99-usb-serial.rules
-# copy the following line in the file
-SUBSYSTEM=="usb-serial", DRIVER=="ftdi_sio", ATTR{latency_timer}="1"
-```
+> First time on a fresh Pi? Do the **[base hardware setup](docs/BASE_SETUP.md)** once
+> (OS, I2C, speaker, virtualenv, `pip install -e .`).
 
-### Set the udev rules for the motor control board
-
-TODO
-
-
-### Setup xbox one controller over bluetooth
-
-Turn your xbox one controller on and set it in pairing mode by long pressing the sync button on the top of the controller.
-
-Run the following commands on the rasp :
-
-```bash
-bluetoothctl
-scan on
-```
-
-Wait for the controller to appear in the list, then run :
-
-```bash
-pair <controller_mac_address>
-trust <controller_mac_address>
-connect <controller_mac_address>
-```
-
-The led on the controller should stop blinking and stay on.
-
-You can test that it's working by running
-
-```bash
-python3 mini_bdx_runtime/mini_bdx_runtime/xbox_controller.py
-```
-
-## Speaker wiring and configuration
-Follow this tutorial
-
-> For now, don't activate `/dev/zero` when they ask
-
-https://learn.adafruit.com/adafruit-max98357-i2s-class-d-mono-amp?view=all
-
-
-## Install the runtime
-
-### Make a virtual environment and activate it
+**Guided bring-up (recommended):**
 
 ```bash
-mkvirtualenv -p python3 open-duck-mini-runtime
-workon open-duck-mini-runtime
-```
-
-Clone this repository on your rasp, cd into the repo, then :
-
-```bash
-git clone https://github.com/apirrone/Open_Duck_Mini_Runtime
 cd Open_Duck_Mini_Runtime
-git checkout v2
-pip install -e .
+python scripts/first_time_setup.py     # skippable, resumable wizard: motors, offsets,
+                                       # IMU calibrate+trim, walk tuning, features, ops
 ```
 
-In Raspberry Pi 5, you need to perform the following operations
+**Run the walk** (download the [policy checkpoint](https://github.com/apirrone/Open_Duck_Mini/blob/v2/BEST_WALK_ONNX_2.onnx) first):
 
 ```bash
-pip uninstall -y RPi.GPIO
-pip install lgpio
+cd scripts
+python v2_rl_walk_mujoco.py --onnx_model_path <path>/BEST_WALK_ONNX_2.onnx
 ```
 
-
-## Test the IMU
+**Head-puppet + camera:**
 
 ```bash
-python3 mini_bdx_runtime/mini_bdx_runtime/raw_imu.py
+cd scripts && python head_puppet.py
 ```
 
-You can also run `python3 scripts/imu_server.py` on the robot and `python3 scripts/imu_client.py --ip <robot_ip>` on your computer to check that the frame is oriented correctly. 
+**Then grab your phone:** join the duck's **Wi-Fi** → the console pops up (or browse to
+`http://10.42.0.1:8080/`). Tap **TUNE** to tune live.
 
-> To find the ip address of the robot, run `ifconfig` on the robot
-
-## Test motors
-
-This will allow you to verify all your motors are connected and configured.
+**Seed the known-good walk tuning** on a new duck (then re-calibrate per robot):
 
 ```bash
-python3 scripts/check_motors.py
+python scripts/apply_stability_defaults.py
 ```
 
-## Make your duck_config.json
+---
 
-Copy `example_config.json` in the home directory of your duck and rename it `duck_config.json`.
+## 🎮 Controls
 
-`cp example_config.json ~/duck_config.json`
+**Gamepad** — `A` pause/unpause · left stick drive · right stick turn · `LB` (hold)
+sprint · **D-pad ↑/↓** gait cadence · **D-pad ←** (hold 3 s) record, **D-pad →** play ·
+`X` projector · `B` sound · **RB + D-pad** live IMU-trim (**RB + Y** to save). In
+head-puppet, **D-pad ↑** toggles face-tracking. *(Full per-mode map in the
+[German manual](docs/Bedienungsanleitung.md).)*
 
-In this file, you can configure some stuff, like registering if you installed the expression features, installed the imu upside down or and other stuff. You also write the joints offsets of your duck here
+**Phone** — everything the gamepad does, plus **TUNE**: live sliders + **ⓘ** hints +
+**↺** reset for walk / camera / antenna, and the IMU-trim card.
 
-## Find the joints offsets
+---
 
-This script will guide you through finding the joints offsets of your robot that you can then write in your `duck_config.json`
+## 📚 Documentation
 
-> This procedure won't be necessary in the future as we will be flashing the offsets directly in each motor's eeprom.
+| Doc | What's in it |
+|---|---|
+| **[What's New in v2.5](docs/WHATS_NEW.md)** | Full breakdown of every change vs. upstream + config reference. |
+| [Base hardware setup](docs/BASE_SETUP.md) | Original one-time Pi/OS/servo/speaker setup. |
+| [Bedienungsanleitung (DE)](docs/Bedienungsanleitung.md) | German end-user manual: every mode + full gamepad map. |
+| [Web UI API](docs/webui-api.md) | The phone console's HTTP contract. |
+| [`ops/`](ops/) | One-time system kits: `pigpio/`, `captive-portal/`, `bluetooth/`. |
+| `CLAUDE.md` / `Open_Duck_Mini_Runtime/CLAUDE.md` | Architecture + operational playbook for contributors. |
 
-```bash
-cd scripts/
-python find_soft_offsets.py
-```
+---
 
-## Run the walk !
+## 🙏 Credits & attribution
 
-Download the [latest policy checkpoint ](https://github.com/apirrone/Open_Duck_Mini/blob/v2/BEST_WALK_ONNX_2.onnx) and copy it to your duck.
+- **Original project:** this is a fork of
+  **[apirrone/Open_Duck_Mini_Runtime](https://github.com/apirrone/Open_Duck_Mini_Runtime)**
+  by Antoine Pirrone and the Open Duck Mini community — all the hard robotics
+  foundations (the policy, the hardware bring-up, the base runtime) are theirs. The
+  trained walking policy comes from the sister project
+  [Open_Duck_Mini](https://github.com/apirrone/Open_Duck_Mini). 🙏
+- **Community fixes** integrated here: the antenna hardware-PWM jitter fix by **Brad3D**,
+  and the pigpio/I2S coexistence by **Elpidiovaldez5**.
+- **AI co-development:** in the interest of full transparency — parts of this
+  **Open Duck Supercharged v2.5** fork were **co-developed with
+  [Claude Code](https://claude.com/claude-code)** (Anthropic's agentic coding assistant),
+  paired with hands-on testing on real duck hardware. The design decisions, hardware
+  validation, and final say were human; the AI helped write, refactor, and document.
 
-`cd scripts/`
+---
 
-`python v2_rl_walk_mujoco.py --onnx_model_path <path_to>/BEST_WALK_ONNX_2.onnx`
-
-
-
-```
-- The commands are : 
-- A to pause/unpause
-- X to turn on/off the projector
-- B to play a random sound
-- Y to turn on/off head control (very experimental, I don't recommend trying that, it can break your duck's head)
-- left and right triggers to control the left and right antennas
-- LB (new!) press and hold to increase the walking frequency, kind of a sprint mode 🙂
-```
+<p align="center"><i>Built with 🦆 and ⚡ on top of a great open-source project.</i></p>
