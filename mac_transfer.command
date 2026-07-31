@@ -10,8 +10,8 @@
 # CALIBRATION + system setup that it can't ship is printed as an ordered checklist at
 # the end (motor offsets, IMU trim, walk tuning, captive portal, reboot).
 #
-# NOTE: for a DIFFERENT hostname/user, edit REMOTE_HOST/REMOTE_USER/REMOTE_ROOT below
-# (an identical clone needs no edit — just join that duck's Wi-Fi and run this).
+# NOTE: it ASKS for the duck's SSH login on launch (Enter = the default bdxv2@bdxv2.local,
+# or type your own user@host), so it works on any duck without editing this file.
 # This deliberately does NOT touch ~/duck_config.json (per-robot: offsets, IMU trim,
 # feature flags) — use scripts/apply_stability_defaults.py to seed the walk tuning.
 #
@@ -26,9 +26,31 @@ trap 'echo; read -r -p "Press Return to close. "' EXIT
 # This script lives in the repo root; resolve it regardless of where it's run.
 LOCAL_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
+# Default duck login. You can override it interactively below, so this script works
+# on any duck / any SSH login without editing the file.
 REMOTE_USER="bdxv2"
 REMOTE_HOST="bdxv2.local"
-REMOTE_ROOT="/home/bdxv2/Open_Duck_Mini_Runtime"
+
+# Ask which duck to deploy to (Enter = the default). Custom input is "user@host".
+# On a non-interactive run (no terminal) the default is used automatically.
+DEFAULT_LOGIN="${REMOTE_USER}@${REMOTE_HOST}"
+echo "Deploy target SSH login."
+echo "  • Press Return to use the default:  ${DEFAULT_LOGIN}"
+echo "  • Or type your duck's login as user@host (e.g. pi@duck2.local)"
+ANSWER=""
+read -r -p "Login [${DEFAULT_LOGIN}]: " ANSWER || ANSWER=""
+if [ -n "${ANSWER}" ]; then
+  if [[ "${ANSWER}" == *"@"* ]]; then
+    REMOTE_USER="${ANSWER%@*}"
+    REMOTE_HOST="${ANSWER#*@}"
+  else
+    # only a hostname given -> keep the default user
+    REMOTE_HOST="${ANSWER}"
+  fi
+fi
+REMOTE_ROOT="/home/${REMOTE_USER}/Open_Duck_Mini_Runtime"
+echo "→ deploying to ${REMOTE_USER}@${REMOTE_HOST}  (${REMOTE_ROOT})"
+echo
 
 # Reuse ONE ssh connection for every step -> a single password prompt.
 CTRL="/tmp/transfer-${REMOTE_USER}-${REMOTE_HOST}.sock"

@@ -21,14 +21,14 @@
   You'll be asked for the duck password TWICE (once to copy, once to extract) — that's
   normal on Windows (no SSH connection-sharing). Set up an SSH key to skip the prompts.
 
-  For a different host/user, edit $RemoteUser / $RemoteHost below.
+  It ASKS for the duck's SSH login on launch (Enter = the default bdxv2@bdxv2.local, or
+  type your own user@host), so it works on any duck without editing this file.
 #>
 
 $ErrorActionPreference = 'Stop'
 
-$RemoteUser = 'bdxv2'
+$RemoteUser = 'bdxv2'      # default login; overridable at the prompt below
 $RemoteHost = 'bdxv2.local'
-$Target     = "$RemoteUser@$RemoteHost"
 # Files to ship. Each path is relative to the repo root AND is its path on the robot
 # (the robot mirrors this layout under ~/Open_Duck_Mini_Runtime).
 $Files = @(
@@ -88,6 +88,18 @@ $Files = @(
 
 # This script lives in the repo root; work from there regardless of where it's launched.
 Set-Location -LiteralPath $PSScriptRoot
+
+# Ask which duck to deploy to (Enter = default). Custom input is "user@host".
+$default = "$RemoteUser@$RemoteHost"
+Write-Host "Deploy target SSH login."
+Write-Host "  * Press Enter to use the default:  $default"
+Write-Host "  * Or type your duck's login as user@host (e.g. pi@duck2.local)"
+$answer = Read-Host "Login [$default]"
+if ($answer) {
+  if ($answer -like '*@*') { $p = $answer.Split('@', 2); $RemoteUser = $p[0]; $RemoteHost = $p[1] }
+  else { $RemoteHost = $answer }
+}
+$Target = "$RemoteUser@$RemoteHost"
 
 Write-Host "================================================="
 Write-Host " Open Duck Mini deploy (Windows)  ->  $Target"
