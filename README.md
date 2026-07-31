@@ -33,6 +33,30 @@ The upstream project makes the duck **walk**. **Supercharged v2.5** makes it wal
 
 ---
 
+## 🎥 See it walk
+
+The proof is in the walking — here's a Supercharged duck crossing a real room end-to-end:
+steadier balance and a calmer, planted gait, no tip-overs.
+
+<p align="center">
+  <a href="docs/videos/walk-demo.mp4">
+    <img src="docs/images/walk-demo-poster.jpg" width="640" alt="Open Duck Supercharged — walk demo (click to play)">
+  </a>
+</p>
+
+<p align="center">
+  ▶️ <b><a href="docs/videos/walk-demo.mp4">Play the walk demo</a></b>
+  &nbsp;·&nbsp; the stability work (action-scale, velocity clip, tilt governor, IMU trim) in action.
+</p>
+
+> ### 🔥 Coming very soon: a flash-and-go `.ISO`
+> A **ready-to-flash Raspberry Pi image** is on the way. Write it to an SD card with the
+> **[Raspberry Pi Imager](https://www.raspberrypi.com/software/)**, boot it, and you get a
+> fully set-up Supercharged duck — no manual install, no dependency wrangling. (Until then,
+> the guided [`first_time_setup.py`](#-quick-start) wizard has you covered.)
+
+---
+
 ## ✨ Highlights
 
 - 🦿 **Rock-solid walking** — config-gated stability levers (action-scale, velocity
