@@ -101,6 +101,9 @@ class DuckConfig:
         # On by default so the ears feel alive once the pigpio jitter fix removes the
         # accidental twitch; toggle it live from the Web UI (persists here on Save).
         self.antenna_free_anim = bool(self.json_config.get("antenna_free_anim", True))
+        # Free-anim sync: True = both ears move in unison; False = each ear wanders
+        # independently (the livelier "mind of its own" look). Toggle live in the UI.
+        self.antenna_sync = bool(self.json_config.get("antenna_sync", False))
         # Persisted libcamera controls for the head-puppet live camera view (exposure,
         # gain, brightness, ...). {} -> the camera's auto defaults. Tuned from the Web UI.
         self.camera_controls = self.json_config.get("camera_controls", {})

@@ -93,10 +93,12 @@ def test_build_state_new_fields_default_none_and_passthrough():
             50.0, None, False, "idle", 0, 50, {}, {}, [], 0.0)
     s = build_state(*base)
     assert s["walk_params"] is None and s["camera"] is None and s["antenna_anim"] is None
+    assert s["antenna_sync"] is None
     wp = {"action_scale": 0.2, "velocity_clip": True}
     cam = {"available": True, "controls": {"Brightness": 0.0}}
-    s2 = build_state(*base, walk_params=wp, camera=cam, antenna_anim=True)
+    s2 = build_state(*base, walk_params=wp, camera=cam, antenna_anim=True, antenna_sync=True)
     assert s2["walk_params"] == wp and s2["camera"] == cam and s2["antenna_anim"] is True
+    assert s2["antenna_sync"] is True
 
 
 if __name__ == "__main__":

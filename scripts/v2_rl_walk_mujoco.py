@@ -177,7 +177,8 @@ class RLWalk:
 
         # Ear-antenna free-animation driver (idle wiggle when not hand-controlled).
         self.antenna_anim = AntennaAnimator(
-            enabled=self.duck_config.antenna_free_anim, rng=random.Random()
+            enabled=self.duck_config.antenna_free_anim,
+            sync=self.duck_config.antenna_sync, rng=random.Random(),
         )
 
         self.last_action = np.zeros(self.num_dofs)
@@ -498,11 +499,16 @@ class RLWalk:
         if "free_anim" in d:
             self.antenna_anim.set_enabled(bool(d["free_anim"]))
             print(f"[antennas] free animation {'ON' if self.antenna_anim.enabled else 'OFF'}")
+        if "sync" in d:
+            self.antenna_anim.set_sync(bool(d["sync"]))
+            print(f"[antennas] sync {'ON (unison)' if self.antenna_anim.sync else 'OFF (independent)'}")
 
     def _save_antenna_settings(self):
         from mini_bdx_runtime.duck_config import save_config_fields
-        backup = save_config_fields({"antenna_free_anim": bool(self.antenna_anim.enabled)})
-        print(f"[antennas] SAVED antenna_free_anim={self.antenna_anim.enabled} (backup {backup})")
+        fields = {"antenna_free_anim": bool(self.antenna_anim.enabled),
+                  "antenna_sync": bool(self.antenna_anim.sync)}
+        backup = save_config_fields(fields)
+        print(f"[antennas] SAVED {fields} (backup {backup})")
 
     def _publish_telemetry(self, now):
         if self.web_bus is None or build_state is None:
@@ -540,6 +546,7 @@ class RLWalk:
                 "governor": self._governor_config_dict(),
             },
             antenna_anim=bool(self.antenna_anim.enabled),
+            antenna_sync=bool(self.antenna_anim.sync),
         ))
 
     def get_obs(self):

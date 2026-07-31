@@ -2,94 +2,122 @@
 Antenna "free animation" — a gentle, organic idle motion for the ear antennas
 (pure logic, no hardware, so it unit-tests off-robot).
 
-Background: the ears are analog servos driven by PWM. On stock Raspberry Pi OS
-the software-timed pwmio PWM jitters, and that accidental jitter read as a cute
-"alive" wiggle. Moving to pigpio hardware-timed PWM (antennas.py) removes the
-jitter — the ears go dead still. This module puts the life back *on purpose* and,
-crucially, makes it switchable so you can instead hand-control the ears precisely.
+Background: the ears are analog servos driven by PWM. On stock Raspberry Pi OS the
+software-timed PWM jitters, and that accidental jitter read as a cute "alive"
+wiggle. Moving to pigpio hardware-timed PWM (antennas.py) removes the jitter — the
+ears go dead still. This module puts the life back *on purpose*, switchably.
 
-Policy, evaluated every control tick:
+Motion model (evaluated every control tick):
   * Manual input wins.  If the operator is pushing an ear (|trigger| over a small
     deadband) the raw value passes straight through — precise hand control.
-  * Free-anim on + idle.  A slow asymmetric sway plus the occasional twitch, eased
-    in over RAMP_S after the last manual touch so releasing a trigger never snaps.
+  * Free-anim on + idle.  Each ear does a smooth RANDOM-WAYPOINT wander: it eases
+    toward a fresh random target picked at random intervals, so the motion never
+    settles into a visible repeating cycle. An occasional twitch adds a "perk".
+    Eased in over RAMP_S after the last manual touch so releasing never snaps.
   * Free-anim off + idle.  The ears rest at 0.
 
-Deterministic: the sway is a pure function of `now`; twitches are scheduled from
-an injected RNG (pass rng=None for sway only). That keeps it reproducible in tests.
+Sync:
+  * sync=False (default): the two ears wander INDEPENDENTLY (uncorrelated — they
+    drift apart and together, the lively "each ear has a mind of its own" look).
+  * sync=True: both ears follow ONE shared motion so they move in unison.
+
+Deterministic: inject an RNG (rng=Random(seed)) and the whole thing is
+reproducible, so it unit-tests. rng=None (real use) seeds from the system RNG.
 """
 import math
 
 DEADZONE = 0.05            # |manual| above this = hand control, passthrough
 
-# idle sway
-SWAY_HZ = 0.22            # slow base sway (Hz)
-SWAY_AMP = 0.22           # base sway amplitude (of the [-1,1] range)
-SWAY_HZ2 = 0.37          # a second, faster component for a less mechanical feel
-SWAY_AMP2 = 0.08
-R_PHASE = math.pi * 0.6  # right ear lags the left -> asymmetric, organic
+AMP = 0.5                 # wander target amplitude (of the [-1,1] range)
+WAYPOINT_EVERY = (0.7, 2.6)   # seconds between new random wander targets (uniform)
+EASE_TAU = 0.45           # smoothing time constant (s); larger = lazier, softer
 
-# occasional twitch (a quick perk-up on one or both ears)
-TWITCH_EVERY = (5.0, 13.0)   # seconds between twitches (uniform)
-TWITCH_S = 0.55              # twitch duration
-TWITCH_AMP = 0.5
+# occasional twitch (a quick perk on one or both ears), on a random schedule
+TWITCH_EVERY = (6.0, 15.0)
+TWITCH_S = 0.5
+TWITCH_AMP = 0.45
 TWITCH_HZ = 2.6
 
 RAMP_S = 0.6              # ease idle in over this long after a manual release
+MAX_DT = 0.1             # clamp the per-tick dt so a stall can't jump the ease
 
 
 def _clamp(v, lo=-1.0, hi=1.0):
     return lo if v < lo else hi if v > hi else v
 
 
-class AntennaAnimator:
-    def __init__(self, enabled=True, rng=None, deadzone=DEADZONE,
-                 sway_amp=SWAY_AMP, twitch_every=TWITCH_EVERY):
-        self.enabled = bool(enabled)
+class _Wander:
+    """One smooth random-walk channel: eases toward a fresh random target picked at
+    random intervals -> organic, non-repeating motion. Deterministic given an rng."""
+
+    def __init__(self, rng, amp=AMP, waypoint_every=WAYPOINT_EVERY, tau=EASE_TAU):
         self.rng = rng
+        self.amp = float(amp)
+        self.waypoint_every = waypoint_every
+        self.tau = float(tau)
+        self.val = 0.0
+        self.target = 0.0
+        self._next = None
+
+    def _new_target(self):
+        return self.rng.uniform(-self.amp, self.amp) if self.rng is not None else 0.0
+
+    def _interval(self):
+        return self.rng.uniform(*self.waypoint_every) if self.rng is not None else 1.5
+
+    def step(self, now, dt):
+        if self._next is None:              # first call: seed a target + schedule
+            self.target = self._new_target()
+            self._next = now + self._interval()
+        if now >= self._next:
+            self.target = self._new_target()
+            self._next = now + self._interval()
+        if dt > 0:
+            a = 1.0 - math.exp(-dt / self.tau)   # dt-aware exponential ease
+            self.val += (self.target - self.val) * a
+        return self.val
+
+
+class AntennaAnimator:
+    def __init__(self, enabled=True, rng=None, sync=False, deadzone=DEADZONE,
+                 amp=AMP, twitch_every=TWITCH_EVERY):
+        import random as _random
+        self.enabled = bool(enabled)
+        self.sync = bool(sync)
         self.deadzone = float(deadzone)
-        self.sway_amp = float(sway_amp)
+        self.rng = rng if rng is not None else _random.Random()
         self.twitch_every = twitch_every
+        self._wander_l = _Wander(self.rng, amp=amp)
+        self._wander_r = _Wander(self.rng, amp=amp)
 
         self._last_active_t = None     # last tick with manual input (None = never)
+        self._last_now = None          # for dt
         self._next_twitch = None
         self._twitch_t0 = None
-        self._twitch_ears = (0.0, 0.0)  # per-ear twitch gain this window
+        self._twitch_ears = (0.0, 0.0)
 
     def set_enabled(self, enabled):
         self.enabled = bool(enabled)
 
+    def set_sync(self, sync):
+        self.sync = bool(sync)
+
     def _manual_active(self, ml, mr):
         return abs(ml) > self.deadzone or abs(mr) > self.deadzone
 
-    def _sway(self, now):
-        base = math.sin(2 * math.pi * SWAY_HZ * now)
-        second = math.sin(2 * math.pi * SWAY_HZ2 * now)
-        left = self.sway_amp * base + SWAY_AMP2 * second
-        right = self.sway_amp * math.sin(2 * math.pi * SWAY_HZ * now + R_PHASE) \
-            + SWAY_AMP2 * math.sin(2 * math.pi * SWAY_HZ2 * now + R_PHASE)
-        return left, right
-
     def _twitch(self, now):
-        """Return (left_add, right_add) for the current twitch, scheduling the next
-        one. No-op (0,0) when rng is None."""
+        """(left_add, right_add) for the current twitch, scheduling the next. rng=None
+        -> no twitch. Returns per-ear so a twitch can perk one ear or both."""
         if self.rng is None:
             return 0.0, 0.0
         if self._next_twitch is None:
             self._next_twitch = now + self.rng.uniform(*self.twitch_every)
-        # start a twitch?
         if self._twitch_t0 is None and now >= self._next_twitch:
             self._twitch_t0 = now
-            # perk one ear, or both, at random
             pick = self.rng.random()
-            if pick < 0.4:
-                self._twitch_ears = (1.0, 0.0)
-            elif pick < 0.8:
-                self._twitch_ears = (0.0, 1.0)
-            else:
-                self._twitch_ears = (1.0, 1.0)
+            self._twitch_ears = (1.0, 0.0) if pick < 0.4 else \
+                (0.0, 1.0) if pick < 0.8 else (1.0, 1.0)
             self._next_twitch = now + self.rng.uniform(*self.twitch_every)
-        # emit while inside the window
         if self._twitch_t0 is not None:
             dt = now - self._twitch_t0
             if dt >= TWITCH_S:
@@ -104,10 +132,12 @@ class AntennaAnimator:
     def update(self, now, manual_left=0.0, manual_right=0.0):
         """Return (left, right) ear targets in [-1,1] for this tick."""
         ml, mr = float(manual_left), float(manual_right)
+        dt = 0.0 if self._last_now is None else _clamp(now - self._last_now, 0.0, MAX_DT)
+        self._last_now = now
+
         if self._manual_active(ml, mr):
             self._last_active_t = now
-            # a manual touch cancels any in-progress twitch cleanly
-            self._twitch_t0 = None
+            self._twitch_t0 = None        # a manual touch cancels any in-progress twitch
             return _clamp(ml), _clamp(mr)
 
         if not self.enabled:
@@ -117,6 +147,13 @@ class AntennaAnimator:
         if self._last_active_t is not None:
             ramp = _clamp((now - self._last_active_t) / RAMP_S, 0.0, 1.0)
 
-        sl, sr = self._sway(now)
         tl, tr = self._twitch(now)
-        return _clamp(ramp * (sl + tl)), _clamp(ramp * (sr + tr))
+        wl = self._wander_l.step(now, dt)
+        wr = self._wander_r.step(now, dt)   # always advance both (no jump when sync flips)
+        if self.sync:
+            # both ears share ONE motion -> they move in unison.
+            left = right = wl + tl
+        else:
+            left = wl + tl
+            right = wr + tr
+        return _clamp(ramp * left), _clamp(ramp * right)

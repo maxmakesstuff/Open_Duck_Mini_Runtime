@@ -684,10 +684,11 @@ function readWalk(k,wp,gov){
     if(gk==="enabled") return !!gov.enabled; return gov[gk]!=null?gov[gk]:0; }
   return wp[k]!=null?wp[k]:0;
 }
-function antennaSection(s){ const on=!!s.antenna_anim;
+function antennaSection(s){ const on=!!s.antenna_anim, sync=!!s.antenna_sync;
   return `<div class="tsec"><span class="lbl">Ear antennas</span>
     ${toggleRow("antenna",{k:"free_anim",name:"Free animation"},on)}
-    <div class="thint">On = gentle idle wiggle when you're not holding the ears. Off = precise hand control (triggers); the ears rest still. Needs the pigpio jitter fix for steady ears.</div>
+    ${toggleRow("antenna",{k:"sync",name:"Sync ears (unison)"},sync)}
+    <div class="thint">Free animation: gentle random idle wiggle when you're not holding the ears (off = precise hand control, ears rest still). Sync: on = both ears move together; off = each ear wanders on its own. Needs the pigpio jitter fix for steady ears.</div>
     <button class="btn tsave" data-save="antenna">SAVE ANTENNA MODE TO DUCK</button></div>`; }
 
 function renderTune(mode){

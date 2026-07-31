@@ -74,7 +74,7 @@ read -r -d '' OVERRIDE_CONTENT <<'EOF' || true
 # can DAMAGE the speaker. -t 0 keeps servo PWM and speaker audio apart.
 [Service]
 ExecStart=
-ExecStart=/usr/bin/pigpiod -t 0
+ExecStart=/usr/bin/pigpiod -l -t 0
 EOF
 
 if write_if_changed "$OVERRIDE" "$OVERRIDE_CONTENT"; then

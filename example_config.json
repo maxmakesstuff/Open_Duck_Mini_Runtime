@@ -10,6 +10,7 @@
         "v_full": 8.5
     },
     "antenna_free_anim": true,
+    "antenna_sync": false,
     "camera_controls": {},
     "expression_features": {
         "eyes": false,

@@ -196,7 +196,8 @@ def main():
     # Ear free-animation (idle wiggle when the ears aren't hand-controlled). Toggled
     # live from the Web UI; manual trigger input always overrides it.
     antenna_anim = AntennaAnimator(
-        enabled=duck_config.antenna_free_anim, rng=random.Random()
+        enabled=duck_config.antenna_free_anim,
+        sync=duck_config.antenna_sync, rng=random.Random(),
     )
     eyes = Eyes() if duck_config.eyes else None
     projector = Projector() if duck_config.projector else None
@@ -292,6 +293,7 @@ def main():
                     "controls": (face_cam.get_camera_controls()
                                  if face_cam is not None else {})},
             antenna_anim=bool(antenna_anim.enabled),
+            antenna_sync=bool(antenna_anim.sync),
         ))
 
     def consume_web_settings():
@@ -313,12 +315,16 @@ def main():
         if ant and "free_anim" in ant:
             antenna_anim.set_enabled(bool(ant["free_anim"]))
             print(f"[antennas] free animation {'ON' if antenna_anim.enabled else 'OFF'}")
+        if ant and "sync" in ant:
+            antenna_anim.set_sync(bool(ant["sync"]))
+            print(f"[antennas] sync {'ON (unison)' if antenna_anim.sync else 'OFF (independent)'}")
         if "antenna" in saves:
             try:
-                save_config_fields({"antenna_free_anim": bool(antenna_anim.enabled)})
-                print("[head_puppet] SAVED antenna_free_anim")
+                save_config_fields({"antenna_free_anim": bool(antenna_anim.enabled),
+                                    "antenna_sync": bool(antenna_anim.sync)})
+                print("[head_puppet] SAVED antenna_free_anim + antenna_sync")
             except Exception as e:  # noqa: BLE001
-                print(f"[head_puppet] could not save antenna_free_anim: {e}")
+                print(f"[head_puppet] could not save antenna settings: {e}")
 
     state = "LIVE"                      # LIVE | RECORDING | PLAYBACK
     recording = []                     # list of frame dicts

@@ -39,7 +39,7 @@ WALK = {"action_scale": 0.23, "action_scale_target": 0.23, "velocity_clip": True
                      "rate_lo": 1.5, "rate_hi": 5.0, "floor": 0.2, "smooth": 0.3}}
 CAM = {"ae": True, "awb": True, "exposure": 10000, "gain": 1.0, "brightness": 0.0,
        "contrast": 1.0, "saturation": 1.0, "sharpness": 1.0}
-ANT = {"free_anim": True}
+ANT = {"free_anim": True, "sync": False}
 
 
 def _png(w, h, pix):
@@ -136,6 +136,7 @@ def build_state():
         },
         "camera": {"available": True, "controls": dict(CAM)},
         "antenna_anim": ANT["free_anim"],
+        "antenna_sync": ANT["sync"],
         "sounds": ["beep1.wav", "happy1.wav", "sad1.wav", "quack.wav"],
         "uptime_s": round(t, 1),
         "message": "mock server — no hardware attached",
@@ -188,8 +189,8 @@ def handle_setting(body):
             WALK[key] = val
     elif group == "camera" and key in CAM:
         CAM[key] = val
-    elif group == "antenna" and key == "free_anim":
-        ANT["free_anim"] = bool(val)
+    elif group == "antenna" and key in ANT:
+        ANT[key] = bool(val)
     print("SETTING", group, key, val)
 
 

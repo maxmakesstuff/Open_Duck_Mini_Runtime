@@ -19,7 +19,14 @@ Public API (unchanged): Antennas().set_position_left(v) / .set_position_right(v)
 with v in [-1, 1], and .stop(). The mechanical throw is identical to before:
 neutral 1500 us, +/-500 us at the extremes (1000..2000 us).
 """
+import sys
 import time
+
+# pigpio's python client ships as an apt package (python3-pigpio) under the system
+# dist-packages, which a venv built WITHOUT --system-site-packages can't import on
+# its own. Append it (like face_tracker does for picamera2) so the venv resolves
+# pigpio; append => the venv's own packages keep priority.
+SYSTEM_DIST_PACKAGES = "/usr/lib/python3/dist-packages"
 
 LEFT_ANTENNA_GPIO = 13     # BCM (== board.D13)
 RIGHT_ANTENNA_GPIO = 12    # BCM (== board.D12)
@@ -50,6 +57,8 @@ class _PigpioBackend:
     name = "pigpio"
 
     def __init__(self):
+        if SYSTEM_DIST_PACKAGES and SYSTEM_DIST_PACKAGES not in sys.path:
+            sys.path.append(SYSTEM_DIST_PACKAGES)
         import pigpio  # pure-python client; talks to the pigpiod daemon over a socket
         self._pi = pigpio.pi()
         if not self._pi.connected:
