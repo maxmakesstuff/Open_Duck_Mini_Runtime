@@ -19,6 +19,20 @@
 
 ---
 
+## ⚡ Recommended: start from the pre-built image
+
+The easiest way to a running duck: **flash the ready-made SD-card image** from the
+[**Releases**](../../releases) section instead of installing anything by hand. The whole
+Supercharged stack — runtime, dependencies, the trained walk policy, the phone console,
+foot-switch autostart, and the duck's own `Openduck` Wi-Fi hotspot — comes
+pre-installed. You only flash, boot, and run the guided first-time setup.
+
+👉 **[Pre-built image — install & first-boot guide](docs/ISO_INSTALL.md)** — flashing,
+Wi-Fi & SSH access (hotspot password included), the foot-switch autostart, and first
+configuration.
+
+---
+
 ## What is this?
 
 The **Open Duck Mini** is a small BDX-style bipedal "duck" robot. This repository is the
@@ -40,42 +54,14 @@ steadier balance and a calmer, planted gait, no tip-overs.
 
 <p align="center">
   <a href="docs/videos/walk-demo.mp4">
-    <img src="docs/images/walk-demo-poster.jpg" width="640" alt="Open Duck Supercharged — walk demo (click to play)">
+    <img src="docs/images/walk-demo-teaser.gif" width="480" alt="Open Duck Supercharged — walk demo teaser (click for the full video)">
   </a>
 </p>
 
 <p align="center">
-  ▶️ <b><a href="docs/videos/walk-demo.mp4">Play the walk demo</a></b>
+  ▶️ <b><a href="docs/videos/walk-demo.mp4">Full 77-second demo (with sound)</a></b>
   &nbsp;·&nbsp; the stability work (action-scale, velocity clip, tilt governor, IMU trim) in action.
 </p>
-
-> ### 🔥 Coming very soon: a flash-and-go `.ISO`
-> A **ready-to-flash Raspberry Pi image** is on the way. Write it to an SD card with the
-> **[Raspberry Pi Imager](https://www.raspberrypi.com/software/)**, boot it, and you get a
-> fully set-up Supercharged duck — no manual install, no dependency wrangling. (Until then,
-> the guided [`first_time_setup.py`](#-quick-start) wizard has you covered.)
-
----
-
-## 🦵 Walk mode vs. Head-puppet mode — pick it with a foot switch
-
-The duck runs **one of two programs**, and on the flashable image it **auto-starts** — you
-choose the mode with the **foot switches**, no keyboard or terminal needed:
-
-| Hold this foot (~5 s) | Starts |
-|---|---|
-| 🦶 **RIGHT foot switch** | **Walk mode** — the AI walking policy (drive, sprint, record). |
-| 🦶 **LEFT foot switch** | **Head-puppet mode** — puppet the head, live camera, face-tracking. |
-
-**How to do it:** power the duck on and let it finish booting, then **press and hold the
-foot switch for the mode you want for about 5 seconds**, until the duck springs to life in
-that mode. (The launcher re-checks the switches every ~5 s, so a firm few-second hold
-always catches it.) If you don't hold a foot, it simply waits. **To switch modes,** restart
-the duck and hold the other foot.
-
-> Running from source instead of the flashed image? Just start a mode directly —
-> `cd scripts && python v2_rl_walk_mujoco.py --onnx_model_path <path>/BEST_WALK_ONNX_2.onnx`
-> (walk) or `python head_puppet.py` (head-puppet). See [Quick start](#-quick-start).
 
 ---
 
@@ -182,8 +168,9 @@ head-puppet, **D-pad ↑** toggles face-tracking. *(Full per-mode map in the
 
 | Doc | What's in it |
 |---|---|
+| **[Pre-built image (ISO) install](docs/ISO_INSTALL.md)** | Flash-and-go SD image: flashing, Wi-Fi & SSH, foot-switch autostart, first configuration. |
 | **[What's New in v2.5](docs/WHATS_NEW.md)** | Full breakdown of every change vs. upstream + config reference. |
-| [Base hardware setup](docs/BASE_SETUP.md) | Original one-time Pi/OS/servo/speaker setup. |
+| [Base hardware setup](docs/BASE_SETUP.md) | Original one-time Pi/OS/servo/speaker setup (not needed with the pre-built image). |
 | [User Guide](docs/USER_GUIDE.md) | End-user manual: every mode, the full gamepad map, and the phone Web UI. |
 | [Web UI API](docs/webui-api.md) | The phone console's HTTP contract. |
 | [`ops/`](ops/) | One-time system kits: `pigpio/`, `captive-portal/`, `bluetooth/`. |
