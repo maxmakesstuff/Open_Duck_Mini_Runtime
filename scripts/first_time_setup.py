@@ -98,7 +98,7 @@ def banner():
     print(cyan(top))
     print(cyan(center(bold("OPEN DUCK MINI  ·  FIRST-TIME SETUP"))))
     print(cyan(boxline()))
-    print(cyan(center(dim("Ein Befehl  →  ein einsatzbereiter Duck"))))
+    print(cyan(center(dim("One command  →  one ready-to-run duck"))))
     print(cyan(center(dim("Script created by Max Schmierer"))))
     print(cyan(bot))
 
@@ -141,11 +141,11 @@ def ask(prompt, choices=("", "s", "a", "q"), default=""):
             raw = default
         if raw in choices:
             return raw
-        print(yellow(f"  bitte eingeben: {', '.join(repr(x) for x in choices)}"))
+        print(yellow(f"  please enter one of: {', '.join(repr(x) for x in choices)}"))
 
 
 def ask_yes(prompt, default=True):
-    d = "J/n" if default else "j/N"
+    d = "Y/n" if default else "y/N"
     while True:
         try:
             raw = input(f"{prompt} [{d}] ").strip().lower()
@@ -177,11 +177,11 @@ def run_child(argv, cwd=SCRIPTS_DIR, sudo=False):
     try:
         rc = subprocess.run(cmd, cwd=cwd).returncode
     except KeyboardInterrupt:
-        print(yellow("\n  (Schritt abgebrochen)"))
-        return False, "abgebrochen"
+        print(yellow("\n  (step aborted)"))
+        return False, "aborted"
     except FileNotFoundError as e:
-        return False, f"nicht gefunden: {e}"
-    return (rc == 0), ("ok" if rc == 0 else f"Exit-Code {rc}")
+        return False, f"not found: {e}"
+    return (rc == 0), ("ok" if rc == 0 else f"exit code {rc}")
 
 
 def save_config_field(updates):
@@ -216,7 +216,7 @@ def save_state(done):
 
 def pause():
     try:
-        input(dim("\n  ↵ Enter, um weiterzumachen … "))
+        input(dim("\n  ↵ Enter to continue … "))
     except (EOFError, KeyboardInterrupt):
         pass
 
@@ -228,19 +228,19 @@ def pause():
 DEPS = [
     ("numpy",           "NumPy",                       True,  "numpy==1.26.4"),
     ("scipy",           "SciPy",                       True,  "scipy==1.15.1"),
-    ("onnxruntime",     "ONNX Runtime (Policy)",       True,  "onnxruntime==1.18.1"),
-    ("rustypot",        "rustypot (Servo-Bus)",        True,  "rustypot==0.1.0"),
-    ("pygame",          "pygame (Gamepad)",            True,  "pygame==2.6.0"),
+    ("onnxruntime",     "ONNX Runtime (policy)",       True,  "onnxruntime==1.18.1"),
+    ("rustypot",        "rustypot (servo bus)",        True,  "rustypot==0.1.0"),
+    ("pygame",          "pygame (gamepad)",            True,  "pygame==2.6.0"),
     ("board",           "Blinka / board (GPIO)",       True,  "adafruit-blinka"),
     ("digitalio",       "digitalio",                   True,  "adafruit-blinka"),
-    ("pwmio",           "pwmio (Antennen)",            True,  "adafruit-blinka"),
+    ("pwmio",           "pwmio (antennas)",            True,  "adafruit-blinka"),
     ("busio",           "busio (I2C)",                 True,  "adafruit-blinka"),
-    ("adafruit_bno055", "BNO055-IMU-Treiber",          True,  "adafruit-circuitpython-bno055==5.4.13"),
-    ("pypot",           "pypot (Motor-Provisionierung)",True,  "pypot @ git+…support-feetech-sts3215"),
-    ("mini_bdx_runtime","mini_bdx_runtime (dieses Paket)", True, "pip install -e ."),
-    ("cv2",             "OpenCV (Gesichts-Tracking)",  False, "python3-opencv / opencv-python"),
-    ("picamzero",       "picamzero (Kamera)",          False, "picamzero"),
-    ("openai",          "openai (KI-Chatter)",         False, "openai==1.70.0"),
+    ("adafruit_bno055", "BNO055 IMU driver",           True,  "adafruit-circuitpython-bno055==5.4.13"),
+    ("pypot",           "pypot (motor provisioning)",  True,  "pypot @ git+…support-feetech-sts3215"),
+    ("mini_bdx_runtime","mini_bdx_runtime (this package)", True, "pip install -e ."),
+    ("cv2",             "OpenCV (face tracking)",      False, "python3-opencv / opencv-python"),
+    ("picamzero",       "picamzero (camera)",          False, "picamzero"),
+    ("openai",          "openai (AI chatter)",         False, "openai==1.70.0"),
 ]
 
 
@@ -252,167 +252,167 @@ def _check_deps():
             print(f"    {green('✓')} {label}")
         except Exception:  # noqa: BLE001 — any import failure counts as missing
             (missing_req if required else missing_opt).append((mod, label, hint))
-            tag = red("FEHLT") if required else yellow("optional")
+            tag = red("MISSING") if required else yellow("optional")
             print(f"    {red('✗') if required else yellow('!')} {label}  ({tag})")
     return missing_req, missing_opt
 
 
 def step_deps(ctx):
-    print(bold("  Prüfe Python-Abhängigkeiten im aktuellen Interpreter:"))
+    print(bold("  Checking Python dependencies in the current interpreter:"))
     print(dim(f"    {sys.executable}"))
     if "virtualenv" not in sys.prefix and ".virtualenvs" not in sys.prefix and \
        os.environ.get("VIRTUAL_ENV") is None:
-        print(yellow("    ⚠ Sieht nicht nach dem Projekt-venv aus. Idealerweise im "
-                     "venv laufen lassen."))
+        print(yellow("    ⚠ This does not look like the project venv. Ideally run "
+                     "inside the venv."))
     print()
     missing_req, missing_opt = _check_deps()
 
     if missing_req:
         print()
-        print(yellow(f"  {len(missing_req)} Pflicht-Paket(e) fehlen."))
-        if ask_yes("  Jetzt 'pip install -e .' im Repo ausführen?", default=True):
+        print(yellow(f"  {len(missing_req)} required package(s) missing."))
+        if ask_yes("  Run 'pip install -e .' in the repo now?", default=True):
             ok, note = run_child([sys.executable, "-m", "pip", "install", "-e", "."],
                                  cwd=REPO_ROOT)
             print()
-            print(bold("  Prüfe erneut:"))
+            print(bold("  Re-checking:"))
             missing_req, missing_opt = _check_deps()
     # Pi 5 hint
     print()
-    print(dim("  Hinweis Pi 5: pip uninstall -y RPi.GPIO && pip install lgpio"))
+    print(dim("  Pi 5 note: pip uninstall -y RPi.GPIO && pip install lgpio"))
     if missing_opt:
-        print(dim("  Optionale (nur für Kamera/Tracking/KI): "
+        print(dim("  Optional (only for camera/tracking/AI): "
                   + ", ".join(m[1] for m in missing_opt)))
     if missing_req:
-        return False, f"{len(missing_req)} Pflicht-Paket(e) fehlen noch"
-    return True, "alle Pflicht-Pakete vorhanden"
+        return False, f"{len(missing_req)} required package(s) still missing"
+    return True, "all required packages present"
 
 
 def step_config(ctx):
     if os.path.exists(CONFIG_PATH):
-        print(green("  ~/duck_config.json existiert bereits — bleibt erhalten."))
-        return True, "vorhanden"
+        print(green("  ~/duck_config.json already exists — keeping it."))
+        return True, "already present"
     if not os.path.exists(EXAMPLE_CONFIG):
-        return False, "example_config.json nicht gefunden"
+        return False, "example_config.json not found"
     shutil.copy2(EXAMPLE_CONFIG, CONFIG_PATH)
-    print(green(f"  Angelegt: {CONFIG_PATH}  (aus example_config.json)"))
-    return True, "aus Vorlage angelegt"
+    print(green(f"  Created: {CONFIG_PATH}  (from example_config.json)"))
+    return True, "created from template"
 
 
 def step_motor_ids(ctx):
-    print(bold("  Motor-IDs provisionieren"))
-    print("  Ein GEKLONTER Duck hat die IDs meist schon → überspringen.")
-    print("  Ein NEUER Servo (Werks-ID 1) bekommt hier seine Bus-ID.")
-    print(dim("  Jeweils genau EINEN neuen Servo anschließen, dann ID vergeben.\n"))
-    if not ask_yes("  Neue Servos jetzt provisionieren?", default=False):
-        return True, "übersprungen (IDs bereits gesetzt)"
+    print(bold("  Provision motor IDs"))
+    print("  A CLONED duck usually has its IDs already → skip this.")
+    print("  A NEW servo (factory ID 1) gets its bus ID here.")
+    print(dim("  Connect exactly ONE new servo at a time, then assign its ID.\n"))
+    if not ask_yes("  Provision new servos now?", default=False):
+        return True, "skipped (IDs already set)"
     any_done = False
     while True:
-        mid = ask_text("  Bus-ID für den angeschlossenen Servo (leer = fertig)")
+        mid = ask_text("  Bus ID for the connected servo (empty = done)")
         if not mid:
             break
         ok, note = run_child([sys.executable, "configure_motor.py", "--id", mid])
         any_done = any_done or ok
-    return True, ("Servos provisioniert" if any_done else "keine Änderung")
+    return True, ("servos provisioned" if any_done else "no changes")
 
 
 def step_motor_pid(ctx):
-    print("  Setzt die Baseline-PID (P=32,I=0,D=0) auf alle 14 Gelenke und fährt")
-    print("  jedes einzeln auf 0.\n")
+    print("  Applies the baseline PID (P=32,I=0,D=0) to all 14 joints and steps")
+    print("  each one to 0.\n")
     return run_child([sys.executable, "configure_all_motors.py"])
 
 
 def step_offsets(ctx):
-    print("  Interaktives Einmessen der Gelenk-Null-Offsets. Folge den Anweisungen")
-    print("  des Skripts; die Werte werden direkt in ~/duck_config.json geschrieben.\n")
+    print("  Interactively measure the joint zero offsets. Follow the script's")
+    print("  instructions; the values are written directly to ~/duck_config.json.\n")
     return run_child([sys.executable, "find_soft_offsets.py"])
 
 
 def step_imu_cal(ctx):
-    print(bold("  IMU-Montage & Kalibrierung"))
+    print(bold("  IMU mounting & calibration"))
     cfg = load_config()
     cur = bool(cfg.get("imu_upside_down", False))
-    up = ask_yes("  Ist die BNO055-IMU KOPFÜBER montiert (wie im aktuellen CAD)?",
+    up = ask_yes("  Is the BNO055 IMU mounted UPSIDE DOWN (as in the current CAD)?",
                  default=cur)
     if up != cur:
         save_config_field({"imu_upside_down": up})
-        print(green(f"  imu_upside_down = {up} gespeichert."))
-    print("\n  Jetzt die Kalibrierung (Gyro still halten, Accel ~6 Lagen). Läuft")
-    print("  automatisch durch und speichert nach ~/.\n")
+        print(green(f"  imu_upside_down = {up} saved."))
+    print("\n  Now the calibration (hold the gyro still, ~6 accel orientations).")
+    print("  Runs through automatically and saves to ~/.\n")
     return run_child([sys.executable, "calibrate_imu.py"])
 
 
 def step_imu_trim(ctx):
-    print("  Health-Check liest Gravitations-Achse, Gyro-Bias und Rest-Neigung —")
-    print("  Duck dabei STILL und WAAGERECHT halten. Am Ende den Trim speichern (y).\n")
+    print("  The health check reads the gravity axis, gyro bias and residual tilt —")
+    print("  keep the duck STILL and LEVEL while it runs. Save the trim at the end (y).\n")
     return run_child([sys.executable, "imu_health_check.py"])
 
 
 def step_tuning(ctx):
-    print("  Setzt das bewährte Lauf-Tuning (action_scale, velocity_clip, Tilt-")
-    print("  Governor, langsamere Kadenz) als Startwerte — Kalibrierung bleibt")
-    print("  unangetastet. Pro Roboter ggf. nachjustieren.\n")
+    print("  Applies the proven walk tuning (action_scale, velocity_clip, tilt")
+    print("  governor, slower cadence) as starting values — calibration stays")
+    print("  untouched. Fine-tune per robot if needed.\n")
     return run_child([sys.executable, "apply_stability_defaults.py"])
 
 
 def step_features(ctx):
-    print(bold("  Ausdrucks-Features aktivieren"))
+    print(bold("  Enable expression features"))
     cfg = load_config()
     feats = dict(cfg.get("expression_features", {}))
-    order = [("eyes", "Augen-LEDs"), ("projector", "Projektor / Scanner-LED"),
-             ("antennas", "Antennen (PWM-Servos)"), ("speaker", "Lautsprecher / Sounds"),
-             ("microphone", "Mikrofon"), ("camera", "Kamera (Tracking)")]
-    print(dim("  (Enter übernimmt den aktuellen Wert)\n"))
+    order = [("eyes", "Eye LEDs"), ("projector", "Projector / scanner LED"),
+             ("antennas", "Antennas (PWM servos)"), ("speaker", "Speaker / sounds"),
+             ("microphone", "Microphone"), ("camera", "Camera (tracking)")]
+    print(dim("  (Enter keeps the current value)\n"))
     for key, label in order:
-        feats[key] = ask_yes(f"    {label} aktivieren?", default=bool(feats.get(key, False)))
+        feats[key] = ask_yes(f"    Enable {label}?", default=bool(feats.get(key, False)))
     save_config_field({"expression_features": feats})
     on = [label for key, label in order if feats.get(key)]
-    print(green(f"\n  Gespeichert. Aktiv: {', '.join(on) if on else '(keine)'}"))
-    return True, f"{len(on)} Feature(s) aktiv"
+    print(green(f"\n  Saved. Active: {', '.join(on) if on else '(none)'}"))
+    return True, f"{len(on)} feature(s) active"
 
 
 def step_xbox(ctx):
-    print(bold("  Xbox-Controller: Bluetooth-Auto-Reconnect"))
-    print("  Installiert den Dienst, der den Pad nach dem Booten automatisch")
-    print("  wieder verbindet (siehe ops/bluetooth/README.md, xpadneo empfohlen).\n")
+    print(bold("  Xbox controller: Bluetooth auto-reconnect"))
+    print("  Installs the service that automatically reconnects the pad after")
+    print("  boot (see ops/bluetooth/README.md, xpadneo recommended).\n")
     setup = os.path.join(OPS, "bluetooth", "setup-bluetooth-reconnect.sh")
     if not os.path.exists(setup):
-        return False, "ops/bluetooth/setup-bluetooth-reconnect.sh fehlt"
-    print(dim("  Zum erstmaligen Koppeln vorher ggf.:  bluetoothctl  →  scan on → "
+        return False, "ops/bluetooth/setup-bluetooth-reconnect.sh missing"
+    print(dim("  For first-time pairing, beforehand if needed:  bluetoothctl  →  scan on → "
               "pair/connect/trust <MAC>\n"))
-    if not ask_yes("  setup-bluetooth-reconnect.sh jetzt ausführen (sudo)?", default=True):
-        return True, "übersprungen"
+    if not ask_yes("  Run setup-bluetooth-reconnect.sh now (sudo)?", default=True):
+        return True, "skipped"
     return run_child(["bash", setup], cwd=os.path.join(OPS, "bluetooth"), sudo=True)
 
 
 def step_captive(ctx):
-    print(bold("  Handy Captive-Portal"))
-    print("  Nach dem Verbinden mit dem Duck-WLAN öffnet jede http-Adresse die")
-    print("  Steuerseite; das Handy bleibt verbunden. Aktiv nach einem Reboot.\n")
+    print(bold("  Phone captive portal"))
+    print("  After joining the duck's Wi-Fi, any http address opens the control")
+    print("  page; the phone stays connected. Active after a reboot.\n")
     setup = os.path.join(OPS, "captive-portal", "setup-captive-portal.sh")
     if not os.path.exists(setup):
-        return False, "ops/captive-portal/setup-captive-portal.sh fehlt"
-    if not ask_yes("  setup-captive-portal.sh jetzt ausführen (sudo)?", default=True):
-        return True, "übersprungen"
+        return False, "ops/captive-portal/setup-captive-portal.sh missing"
+    if not ask_yes("  Run setup-captive-portal.sh now (sudo)?", default=True):
+        return True, "skipped"
     ok, note = run_child(["bash", setup], cwd=os.path.join(OPS, "captive-portal"), sudo=True)
     if ok:
         ctx["needs_reboot"] = True
-        print(yellow("\n  → Für den DNS-Teil später einmal:  sudo reboot"))
+        print(yellow("\n  → For the DNS part, later run once:  sudo reboot"))
     return ok, note
 
 
 def step_verify(ctx):
-    print(bold("  Abschluss-Verifikation\n"))
+    print(bold("  Final verification\n"))
     ok = True
     # 1) code imports
     sys.path.insert(0, os.path.join(REPO_ROOT, "mini_bdx_runtime", "mini_bdx_runtime"))
     for mod, label in [("stability_governor", "Governor"), ("duck_config", "Config"),
-                       ("web_control", "Web-UI")]:
+                       ("web_control", "Web UI")]:
         try:
             importlib.import_module(mod)
-            print(f"    {green('✓')} Code lädt: {label}")
+            print(f"    {green('✓')} code loads: {label}")
         except Exception as e:  # noqa: BLE001
             ok = False
-            print(f"    {red('✗')} Code-Import {label}: {e}")
+            print(f"    {red('✗')} code import {label}: {e}")
     # 2) config completeness
     cfg = load_config()
     offs = cfg.get("joints_offsets", {})
@@ -422,31 +422,31 @@ def step_verify(ctx):
     def status(cond):
         return green("✓") if cond else yellow("!")
     print()
-    print(f"    {status(n_off == 14)} joints_offsets: {n_off}/14 Gelenke "
-          f"({nonzero} ≠ 0)" + ("" if nonzero else dim("  ← noch nicht eingemessen?")))
-    print(f"    {status(bool(trim))} imu_trim: {trim or '(nicht gesetzt)'}")
+    print(f"    {status(n_off == 14)} joints_offsets: {n_off}/14 joints "
+          f"({nonzero} ≠ 0)" + ("" if nonzero else dim("  ← not measured yet?")))
+    print(f"    {status(bool(trim))} imu_trim: {trim or '(not set)'}")
     print(f"    {status('action_scale' in cfg)} action_scale: {cfg.get('action_scale', '(default)')}")
     print(f"    {status(True)} imu_upside_down: {cfg.get('imu_upside_down', False)}")
     feats = cfg.get("expression_features", {})
-    print(f"    · Features: {', '.join(k for k, v in feats.items() if v) or '(keine)'}")
+    print(f"    · Features: {', '.join(k for k, v in feats.items() if v) or '(none)'}")
     if nonzero == 0:
         ok = False
-    return ok, ("startklar" if ok else "Kalibrierung/Imports unvollständig")
+    return ok, ("ready to go" if ok else "calibration/imports incomplete")
 
 
 STEPS = [
-    {"key": "deps",      "title": "Abhängigkeiten & Installation prüfen", "run": step_deps},
-    {"key": "config",    "title": "duck_config.json anlegen",            "run": step_config},
-    {"key": "motor_ids", "title": "Motor-IDs provisionieren (neue Servos)", "run": step_motor_ids},
-    {"key": "motor_pid", "title": "Motoren: PID-Baseline & Nullstellung", "run": step_motor_pid},
-    {"key": "offsets",   "title": "Gelenk-Null-Offsets einmessen",       "run": step_offsets},
-    {"key": "imu_cal",   "title": "IMU-Montage & Kalibrierung",          "run": step_imu_cal},
-    {"key": "imu_trim",  "title": "IMU Health-Check & Trim",             "run": step_imu_trim},
-    {"key": "tuning",    "title": "Lauf-Tuning (Stabilität) setzen",     "run": step_tuning},
-    {"key": "features",  "title": "Ausdrucks-Features wählen",           "run": step_features},
-    {"key": "xbox",      "title": "Xbox-Controller (Bluetooth-Reconnect)", "run": step_xbox},
-    {"key": "captive",   "title": "Handy Captive-Portal (sudo)",         "run": step_captive},
-    {"key": "verify",    "title": "Abschluss-Verifikation",             "run": step_verify},
+    {"key": "deps",      "title": "Check dependencies & installation",    "run": step_deps},
+    {"key": "config",    "title": "Create duck_config.json",              "run": step_config},
+    {"key": "motor_ids", "title": "Provision motor IDs (new servos)",     "run": step_motor_ids},
+    {"key": "motor_pid", "title": "Motors: PID baseline & zero position", "run": step_motor_pid},
+    {"key": "offsets",   "title": "Measure joint zero offsets",           "run": step_offsets},
+    {"key": "imu_cal",   "title": "IMU mounting & calibration",           "run": step_imu_cal},
+    {"key": "imu_trim",  "title": "IMU health check & trim",              "run": step_imu_trim},
+    {"key": "tuning",    "title": "Apply walk tuning (stability)",        "run": step_tuning},
+    {"key": "features",  "title": "Choose expression features",           "run": step_features},
+    {"key": "xbox",      "title": "Xbox controller (Bluetooth reconnect)", "run": step_xbox},
+    {"key": "captive",   "title": "Phone captive portal (sudo)",          "run": step_captive},
+    {"key": "verify",    "title": "Final verification",                   "run": step_verify},
 ]
 
 
@@ -462,17 +462,17 @@ def final_summary(status, ctx):
         print(f"  {mark} {i + 1:>2}. {st['title']}")
     print()
     if not failed and (done + skipped) == len(STEPS):
-        print(green(bold("  ✅  Dieser Duck ist eingerichtet und startklar!")))
+        print(green(bold("  ✅  This duck is set up and ready to go!")))
     else:
-        print(yellow(bold(f"  Fertig: {done} erledigt, {skipped} übersprungen, "
-                          f"{len(failed)} fehlgeschlagen.")))
+        print(yellow(bold(f"  Done: {done} completed, {skipped} skipped, "
+                          f"{len(failed)} failed.")))
         for s in failed:
             print(red(f"     ✗ {s['title']}"))
     if ctx.get("needs_reboot"):
-        print(yellow("\n  → Captive-Portal-DNS aktiviert sich nach:  sudo reboot"))
-    print(dim("\n  Walk starten:  cd scripts && python v2_rl_walk_mujoco.py "
-              "--onnx_model_path <pfad>/BEST_WALK_ONNX_2.onnx"))
-    print(dim("  Setup erneut/teilweise:  python scripts/first_time_setup.py"))
+        print(yellow("\n  → Captive-portal DNS activates after:  sudo reboot"))
+    print(dim("\n  Start the walk:  cd scripts && python v2_rl_walk_mujoco.py "
+              "--onnx_model_path <path>/BEST_WALK_ONNX_2.onnx"))
+    print(dim("  Re-run setup (fully or partially):  python scripts/first_time_setup.py"))
     print(dim("\n  — Script created by Max Schmierer 🦆"))
 
 
@@ -487,19 +487,19 @@ def main():
         step = STEPS[i]
         render(STEPS, status, i)
         already = status[step["key"]] == "done"
-        print("  " + bold(f"Schritt {i + 1}/{len(STEPS)}: {step['title']}"))
+        print("  " + bold(f"Step {i + 1}/{len(STEPS)}: {step['title']}"))
         if already:
-            print(green("  (bereits als erledigt markiert)"))
+            print(green("  (already marked as done)"))
         print()
 
         if not auto:
             choice = ask(
-                "  [↵]=ausführen  s=überspringen  a=alle ausführen  q=beenden  › ",
+                "  [↵]=run  s=skip  a=run all  q=quit  › ",
                 choices=("", "s", "a", "q"),
                 default="s" if already else "",
             )
             if choice == "q":
-                if ask_yes("  Setup wirklich beenden?", default=False):
+                if ask_yes("  Really quit the setup?", default=False):
                     break
                 continue
             if choice == "s":
@@ -513,7 +513,7 @@ def main():
         try:
             ok, note = step["run"](ctx)
         except Exception as e:  # noqa: BLE001 — never let one step crash the wizard
-            ok, note = False, f"unerwarteter Fehler: {e}"
+            ok, note = False, f"unexpected error: {e}"
         status[step["key"]] = "done" if ok else "failed"
         if ok:
             done_keys.add(step["key"])
@@ -521,7 +521,7 @@ def main():
             print(green(f"\n  ✓ {step['title']} — {note}"))
         else:
             print(red(f"\n  ✗ {step['title']} — {note}"))
-            print(dim("    (du kannst diesen Schritt später erneut ausführen)"))
+            print(dim("    (you can re-run this step later)"))
         pause()
         i += 1
 
@@ -532,4 +532,4 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\nAbgebrochen.")
+        print("\nAborted.")
