@@ -320,6 +320,11 @@ class RLWalk:
         if self.recorder.state == "idle":
             if self._record_hold.update(dl.is_pressed, now):
                 self.recorder.start_recording()
+                if self.duck_config.projector:
+                    # Baseline event so playback reproduces the lamp's current
+                    # on/off state from frame 0 (the scanner sound follows the
+                    # lamp, so it comes along automatically).
+                    self.recorder.record_projector(self.projector.on)
                 self._record_stop_armed = False
                 cap_s = self.recorder.max_frames / self.control_freq
                 print(f"● WALK RECORDING (max {cap_s:.0f}s) — tap DPAD-LEFT to stop")
@@ -379,6 +384,10 @@ class RLWalk:
             if self.duck_config.speaker:
                 for name in self.recorder.pop_sounds():
                     self.sounds.play(name)  # unknown names are safely ignored
+            if self.duck_config.projector:
+                for state in self.recorder.pop_projector():
+                    if state != self.projector.on:
+                        self.projector.switch()  # _couple_scanner follows the lamp
             if pf is not None:
                 lc, off, spr, _fin = pf
                 self.phase_frequency_factor_offset = off
@@ -729,6 +738,9 @@ class RLWalk:
                     if self.buttons.X.triggered:
                         if self.duck_config.projector:
                             self.projector.switch()
+                            # While recording, remember the RESULTING state so
+                            # playback sets (not blind-toggles) the lamp.
+                            self.recorder.record_projector(self.projector.on)
 
                     if self.buttons.B.triggered:
                         if (self.duck_config.speaker and self.sounds.ok

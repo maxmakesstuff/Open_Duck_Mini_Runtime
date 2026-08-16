@@ -298,6 +298,116 @@ def test_load_sanitizes_sound_events():
     assert rec.sound_events == [(1, "good.wav")]
 
 
+def test_projector_recorded_at_current_frame_index():
+    rec = WalkRecorder(control_hz=50)
+    rec.start_recording()
+    rec.record_projector(True)             # baseline, lands on frame 0
+    _record_n(rec, 1)
+    _record_n(rec, 1)
+    rec.record_projector(False)            # toggle, lands on frame 2
+    _record_n(rec, 1)
+    rec.stop_recording()
+    assert rec.proj_events == [(0, True), (2, False)]
+
+
+def test_record_projector_ignored_unless_recording():
+    rec = WalkRecorder(control_hz=50)
+    rec.record_projector(True)
+    assert rec.proj_events == []
+
+
+def test_new_recording_clears_proj_events_and_stop_drops_frameless():
+    rec = WalkRecorder(control_hz=50)
+    rec.start_recording()
+    rec.record_projector(True)
+    _record_n(rec, 1)
+    rec.record_projector(False)            # frame never recorded -> dropped on stop
+    rec.stop_recording()
+    assert rec.proj_events == [(0, True)]
+    rec.start_recording()
+    assert rec.proj_events == []
+
+
+def test_playback_replays_projector_states_and_loops():
+    rec = WalkRecorder(control_hz=50)
+    rec.start_recording()
+    rec.record_projector(True)
+    _record_n(rec, 1)
+    _record_n(rec, 1)
+    rec.record_projector(False)
+    _record_n(rec, 1)
+    rec.stop_recording()
+    rec.start_playback()
+    states = []
+    for _ in range(6):                     # twice around the 3-frame loop
+        rec.next_frame()
+        states.append(rec.pop_projector())
+    assert states == [[True], [], [False], [True], [], [False]]
+
+
+def test_pop_projector_empty_when_idle_consumed_once_and_muted_in_ramp():
+    rec = WalkRecorder(control_hz=50, stop_ramp_s=0.1)
+    assert rec.pop_projector() == []
+    rec.start_recording()
+    rec.record_projector(True)
+    for _ in range(10):
+        _record_n(rec, 1)
+    rec.stop_recording()
+    rec.start_playback()
+    rec.next_frame()
+    assert rec.pop_projector() == [True]
+    assert rec.pop_projector() == []       # consumed
+    rec.request_stop([0.1, 0, 0, 0, 0, 0, 0], 0.0, False)
+    while True:
+        r = rec.next_frame()
+        assert rec.pop_projector() == [], "no projector events during the ramp"
+        if r is None or r[3]:
+            break
+
+
+def test_save_load_roundtrips_and_sanitizes_proj_events():
+    import pickle
+    rec = WalkRecorder(control_hz=50)
+    rec.start_recording()
+    rec.record_projector(True)
+    _record_n(rec, 2)
+    rec.stop_recording()
+    path = os.path.join(tempfile.gettempdir(), "walk_rec_proj_test.pkl")
+    rec.save(path)
+    rec2 = WalkRecorder(control_hz=50)
+    rec2.load(path)
+    assert rec2.proj_events == [(0, True)]
+    # dirty file: bad shapes/indices/values dropped, ints coerced to bool
+    with open(path, "wb") as f:
+        pickle.dump({
+            "control_hz": 50.0,
+            "frames": [[0.1] + [0.0] * 8, [0.1] + [0.0] * 8],
+            "proj_events": [
+                (1, 1),               # int state -> kept as True
+                (0, False),           # kept
+                (9, True),            # out of range -> dropped
+                ("x", True),          # bad index -> dropped
+                (0, "on"),            # non-bool/int state -> dropped
+                (1,),                 # wrong shape -> dropped
+            ],
+        }, f)
+    rec3 = WalkRecorder(control_hz=50)
+    rec3.load(path)
+    os.remove(path)
+    assert rec3.proj_events == [(1, True), (0, False)]
+
+
+def test_load_legacy_pickle_without_proj_events():
+    import pickle
+    path = os.path.join(tempfile.gettempdir(), "walk_rec_projlegacy_test.pkl")
+    with open(path, "wb") as f:
+        pickle.dump({"control_hz": 50.0, "frames": [[0.1] + [0.0] * 8]}, f)
+    rec = WalkRecorder(control_hz=50)
+    rec.load(path)
+    os.remove(path)
+    assert rec.proj_events == []
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

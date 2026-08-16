@@ -25,13 +25,17 @@ A recorded frame is a plain tuple/list of 9 floats:
      phase_freq_offset, sprint]
 (the 7-element `last_commands` vector + gait frequency offset + sprint 0/1).
 
-Sound presses (the B button) are kept OUT of the float frame: they live in a
-parallel `sound_events` list of (frame_index, sound_name) pairs, so the frame
-layout — and every existing recording — stays untouched. The loop logs the
-exact sound it played while recording and re-plays that same sound when the
-playback cursor serves that frame. Names are untrusted on load: bad shapes,
-out-of-range indices, and non-string names are dropped (the player additionally
-ignores names not present in the robot's sound set).
+Sound presses (the B button) and projector toggles (X, whose LED also drives
+the scanner lamp-loop sound) are kept OUT of the float frame: they live in
+parallel event lists — `sound_events` as (frame_index, sound_name) pairs and
+`proj_events` as (frame_index, state) pairs — so the frame layout, and every
+existing recording, stays untouched. The loop logs the exact sound it played /
+the projector state that resulted while recording; playback re-plays that
+sound and re-applies that state (a set, not a blind toggle, so a different
+projector state at playback start can't invert the timeline) when the cursor
+serves that frame. Events are untrusted on load: bad shapes, out-of-range
+indices, and wrong-typed values are dropped (the player additionally ignores
+sound names not present in the robot's sound set).
 """
 import pickle
 
@@ -106,15 +110,18 @@ class WalkRecorder:
         self.state = "idle"
         self.frames = []
         self.sound_events = []     # (frame_index, sound_name) pairs
+        self.proj_events = []      # (frame_index, projector_state) pairs
         self._cursor = 0
         self._ramp = None          # (from_frame, ticks_left) while ramping down
         self._pending_sounds = []  # sounds attached to the frame last served
+        self._pending_proj = []    # projector states for the frame last served
 
     # ------------------------------------------------------------- recording
     def start_recording(self):
         self.state = "recording"
         self.frames = []
         self.sound_events = []
+        self.proj_events = []
         self._ramp = None
 
     def record_sound(self, name):
@@ -123,6 +130,12 @@ class WalkRecorder:
         recording."""
         if self.state == "recording" and name:
             self.sound_events.append((len(self.frames), str(name)))
+
+    def record_projector(self, state):
+        """Attach the projector's (post-toggle) state to the frame recorded THIS
+        tick. Also used for the record-start baseline. No-op unless recording."""
+        if self.state == "recording":
+            self.proj_events.append((len(self.frames), bool(state)))
 
     def record(self, last_commands, gait_offset, sprint):
         """Append one clamped frame. Returns True while still recording; flips to
@@ -138,10 +151,13 @@ class WalkRecorder:
     def stop_recording(self):
         if self.state == "recording":
             self.state = "idle"
-            # Drop any sound whose frame never got recorded (pressed on the
+            # Drop any event whose frame never got recorded (pressed on the
             # stop tick) so no event points past the end of the buffer.
             self.sound_events = [
                 (i, n) for i, n in self.sound_events if i < len(self.frames)
+            ]
+            self.proj_events = [
+                (i, s) for i, s in self.proj_events if i < len(self.frames)
             ]
 
     # -------------------------------------------------------------- playback
@@ -155,6 +171,7 @@ class WalkRecorder:
         self._cursor = 0
         self._ramp = None
         self._pending_sounds = []
+        self._pending_proj = []
         return True
 
     def request_stop(self, from_commands, gait_offset, sprint):
@@ -181,8 +198,9 @@ class WalkRecorder:
             return None
 
         # Graceful stop ramp takes priority over the recorded stream (and
-        # serves no recorded frame, so no sounds either).
+        # serves no recorded frame, so no sound/projector events either).
         self._pending_sounds = []
+        self._pending_proj = []
         if self._ramp is not None:
             base, ticks_left = self._ramp
             ticks_left -= 1
@@ -200,6 +218,9 @@ class WalkRecorder:
         frame = self.frames[self._cursor]
         self._pending_sounds = [
             n for i, n in self.sound_events if i == self._cursor
+        ]
+        self._pending_proj = [
+            s for i, s in self.proj_events if i == self._cursor
         ]
         self._cursor += 1
         finished = False
@@ -219,6 +240,14 @@ class WalkRecorder:
         self._pending_sounds = []
         return out
 
+    def pop_projector(self):
+        """Projector states attached to the frame served by the last
+        next_frame() call (apply in order; last one wins). Consumed on read;
+        empty when idle, recording, or ramping."""
+        out = self._pending_proj
+        self._pending_proj = []
+        return out
+
     @property
     def duration_s(self):
         return len(self.frames) / self.control_hz if self.control_hz else 0.0
@@ -227,7 +256,8 @@ class WalkRecorder:
     def save(self, path):
         with open(path, "wb") as f:
             pickle.dump({"control_hz": self.control_hz, "frames": self.frames,
-                         "sound_events": self.sound_events}, f)
+                         "sound_events": self.sound_events,
+                         "proj_events": self.proj_events}, f)
 
     def load(self, path):
         """Load frames from disk, re-clamping every frame (untrusted input).
@@ -239,17 +269,32 @@ class WalkRecorder:
         raw = data.get("frames", []) if isinstance(data, dict) else list(data)
         self.frames = [clamp_frame(fr) for fr in raw]
         self.sound_events = []
+        self.proj_events = []
         if isinstance(data, dict):
             for ev in data.get("sound_events", []):
-                try:
-                    i, n = ev
-                except (TypeError, ValueError):
-                    continue
-                if (isinstance(i, int) and not isinstance(i, bool)
-                        and 0 <= i < len(self.frames) and isinstance(n, str)):
+                i, n = self._checked_event(ev)
+                if i is not None and isinstance(n, str):
                     self.sound_events.append((i, n))
+            for ev in data.get("proj_events", []):
+                i, s = self._checked_event(ev)
+                if i is not None and isinstance(s, (bool, int)):
+                    self.proj_events.append((i, bool(s)))
         self.state = "idle"
         self._cursor = 0
         self._ramp = None
         self._pending_sounds = []
+        self._pending_proj = []
         return len(self.frames)
+
+    def _checked_event(self, ev):
+        """Unpack an untrusted (frame_index, value) pair. Returns (index, value)
+        with index None when the shape or index is invalid; the caller checks
+        the value's type."""
+        try:
+            i, v = ev
+        except (TypeError, ValueError):
+            return None, None
+        if (isinstance(i, int) and not isinstance(i, bool)
+                and 0 <= i < len(self.frames)):
+            return i, v
+        return None, None
