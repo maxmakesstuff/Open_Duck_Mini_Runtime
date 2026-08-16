@@ -52,7 +52,8 @@ WALK_RECORDING_PATH = os.path.join(os.getcwd(), "walk_recording.pkl")
 # Live IMU-trim tuner (RB + D-pad, or the web card): step per nudge and the hard
 # clamp so a stuck input can't drive the trim to a dangerous angle.
 TRIM_STEP = 0.002     # rad (~0.11 deg) per D-pad tap / web +/- press
-TRIM_LIMIT = 0.1      # rad (~5.7 deg) max |trim| on either axis
+TRIM_LIMIT = 0.2      # rad (~11.5 deg) max |trim| on either axis — sized for a
+                      # heavy rear payload (the big battery needs ~0.1 rad alone)
 
 
 def _accel_pitch_roll(accel):
@@ -375,6 +376,9 @@ class RLWalk:
                 self.recorder.state = "idle"
                 return raw_commands
             pf = self.recorder.next_frame()
+            if self.duck_config.speaker:
+                for name in self.recorder.pop_sounds():
+                    self.sounds.play(name)  # unknown names are safely ignored
             if pf is not None:
                 lc, off, spr, _fin = pf
                 self.phase_frequency_factor_offset = off
@@ -727,8 +731,14 @@ class RLWalk:
                             self.projector.switch()
 
                     if self.buttons.B.triggered:
-                        if self.duck_config.speaker:
-                            self.sounds.play_random_sound()
+                        if (self.duck_config.speaker and self.sounds.ok
+                                and self.sounds.sounds):
+                            # Pick the sound HERE (not inside play_random_sound)
+                            # so a recording can capture which one played and
+                            # playback repeats it at the same tick.
+                            name = random.choice(list(self.sounds.sounds.keys()))
+                            self.sounds.play(name)
+                            self.recorder.record_sound(name)
 
                     if self.duck_config.antennas:
                         # Manual trigger input (cross-wired as before) overrides; when
