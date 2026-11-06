@@ -134,6 +134,14 @@ def test_build_state_new_fields_default_none_and_passthrough():
     assert s2["antenna_sync"] is True
 
 
+def test_build_state_passes_joint_offsets_through():
+    base = ("walk", False, {"voltage": None, "percent": None, "charging": None},
+            50.0, None, False, "idle", 0, 50, {}, {}, [], 0.0)
+    assert build_state(*base)["joint_offsets"] is None      # head puppet: no tuner
+    snap = {"offsets": {"left_knee": 0.1}, "holding": True}
+    assert build_state(*base, joint_offsets=snap)["joint_offsets"] == snap
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

@@ -23,9 +23,22 @@ def save_config_fields(updates, config_json_path=f"{HOME_DIR}/duck_config.json",
         backup_path = f"{config_json_path}.{time.strftime('%Y%m%d-%H%M%S')}.bak"
         shutil.copy2(config_json_path, backup_path)
     cfg.update(updates)
-    with open(config_json_path, "w") as f:
-        json.dump(cfg, f, indent=2)
-        f.write("\n")
+    # Write-then-rename: this file holds the duck's mechanical zero, and a duck can lose
+    # power at any moment. A reader only ever sees the old file or the complete new one.
+    tmp_path = f"{config_json_path}.tmp{os.getpid()}"
+    try:
+        with open(tmp_path, "w") as f:
+            json.dump(cfg, f, indent=2)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        if os.path.exists(config_json_path):
+            shutil.copymode(config_json_path, tmp_path)
+        os.replace(tmp_path, config_json_path)
+    except BaseException:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
     return backup_path
 
 

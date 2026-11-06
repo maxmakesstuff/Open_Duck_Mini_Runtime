@@ -11,6 +11,9 @@ at ~4 Hz, send commands only on change / at ~10 Hz while a stick is held.
 ### `GET /`
 Returns `index.html` (text/html).
 
+### `GET /offsets`
+Returns `offsets.html`, the joint-offset and IMU-trim calibration page (also self-contained).
+
 ### `GET /api/state`  → JSON snapshot (poll ~4 Hz)
 ```json
 {
@@ -27,9 +30,38 @@ Returns `index.html` (text/html).
   "gait_offset": 0.0,                 // walk only
   "sounds": ["beep1.wav", "happy1.wav"],
   "uptime_s": 123.4,
-  "message": ""                       // optional transient status line to show the user
+  "message": "",                      // optional transient status line to show the user
+  "imu_trim": {"pitch": 0.012, "roll": -0.02,                      // radians, live; null in head puppet
+               "saved": {"pitch": 0.01, "roll": -0.02}},           // what duck_config holds
+  "joint_offsets": {                  // walk only; null in head puppet
+    "offsets": {"left_knee": 0.124},  // accepted targets, all 14 joints, radians
+    "saved": {"left_knee": 0.124},    // what duck_config holds
+    "limit": 0.5,                     // edit window; widened per joint to include its saved value
+    "holding": false,                 // edits are only accepted while true
+    "moving": false,                  // the stance glide or an offset slew is still running
+    "dirty": false,                   // offsets != saved
+    "error": ""                       // why the last save failed, else empty
+  }
 }
 ```
+
+### Joint offsets, over `POST /api/setting`
+A POST only queues the request for the control loop, so `{"ok":true}` means "received", not
+"applied". The loop's answer is the next `joint_offsets` telemetry: a refused edit simply
+never appears in `offsets`.
+
+```json
+{"group":"stance","key":"hold","value":true}            // pause + glide to the standing pose
+{"group":"joint_offsets","key":"left_knee","value":0.13} // needs holding; slews, never steps
+{"group":"joint_offsets","action":"reset"}               // needs holding; glide back to saved
+{"group":"joint_offsets","action":"save"}                // write joints_offsets, backup first
+```
+
+Resuming the walk (button `A`) ends the hold. Unsaved offsets stay active until restart.
+
+Every POST body must be a JSON object of finite numbers: `NaN`, `Infinity` and `1e999` are
+a `400` on all routes, because such a value would flow through the observation into the
+motor targets.
 
 ### `POST /api/command`  → set the web "virtual sticks"
 Body (all fields optional; sticks/triggers are **normalized to the same convention as the

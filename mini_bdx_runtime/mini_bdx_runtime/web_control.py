@@ -12,6 +12,7 @@ The API routing is a pure function (handle_api) so it unit-tests without sockets
 See docs/webui-api.md for the contract.
 """
 import json
+import math
 import os
 import socket
 import threading
@@ -25,13 +26,35 @@ _FALLBACK_HTML = (
     "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>"
     "<style>body{font-family:system-ui;background:#1a1712;color:#f0e6d2;padding:2rem}"
     "code{color:#ffb347}</style><h1>Duck control</h1>"
-    "<p>The UI page <code>webui/index.html</code> isn't installed, but the API is up.</p>"
+    "<p>This UI page isn't installed in <code>webui/</code>, but the API is up.</p>"
     "<p>Try <code>GET /api/state</code>.</p>"
 )
 
 
 def _json_bytes(obj):
     return json.dumps(obj, separators=(",", ":")).encode("utf-8")
+
+
+def _reject_constant(name):
+    raise ValueError(f"non-finite number: {name}")
+
+
+def _finite_float(text):
+    value = float(text)
+    if not math.isfinite(value):         # 1e999 parses to inf without complaint
+        raise ValueError(f"non-finite number: {text}")
+    return value
+
+
+def _parse_object(body_bytes):
+    """Decode a POST body into a dict, or raise ValueError. NaN and infinity are refused
+    here, once, for every route: Python's json accepts them by default, and one of them
+    in a stick, trim or tuning value would flow through the obs into the motor targets."""
+    d = json.loads(body_bytes or b"{}", parse_constant=_reject_constant,
+                   parse_float=_finite_float)
+    if not isinstance(d, dict):
+        raise ValueError("expected a JSON object")
+    return d
 
 
 def handle_api(method, path, body_bytes, bus, now):
@@ -44,69 +67,67 @@ def handle_api(method, path, body_bytes, bus, now):
     if method == "GET" and path == "/api/state":
         return 200, "application/json", _json_bytes(bus.get_telemetry())
 
-    if method == "POST" and path == "/api/command":
+    if method == "POST" and path in _POST_ROUTES:
         try:
-            d = json.loads(body_bytes or b"{}")
-        except (ValueError, TypeError):
-            return 400, "application/json", _json_bytes({"ok": False, "error": "bad json"})
-        bus.set_command(
-            now=now,
-            active=bool(d.get("active", False)),
-            l_x=d.get("l_x", 0.0), l_y=d.get("l_y", 0.0),
-            r_x=d.get("r_x", 0.0), r_y=d.get("r_y", 0.0),
-            left_trigger=d.get("left_trigger", 0.0),
-            right_trigger=d.get("right_trigger", 0.0),
-        )
-        return 200, "application/json", _json_bytes({"ok": True})
-
-    if method == "POST" and path == "/api/button":
-        try:
-            d = json.loads(body_bytes or b"{}")
-        except (ValueError, TypeError):
-            return 400, "application/json", _json_bytes({"ok": False, "error": "bad json"})
-        ok = bus.push_button(str(d.get("button", "")), str(d.get("action", "press")))
-        return (200 if ok else 400), "application/json", _json_bytes({"ok": bool(ok)})
-
-    if method == "POST" and path == "/api/trim":
-        try:
-            d = json.loads(body_bytes or b"{}")
-        except (ValueError, TypeError):
-            return 400, "application/json", _json_bytes({"ok": False, "error": "bad json"})
-        if str(d.get("action", "")) == "save":
-            bus.push_trim_save()
-            return 200, "application/json", _json_bytes({"ok": True})
-        try:
-            ok = bus.push_trim(str(d.get("axis", "")), float(d.get("delta", 0.0)))
-        except (ValueError, TypeError):
-            return 400, "application/json", _json_bytes({"ok": False, "error": "bad delta"})
-        return (200 if ok else 400), "application/json", _json_bytes({"ok": bool(ok)})
-
-    # Generic live-settings channel: walk tuning, camera controls, antenna toggle.
-    # Body is either {group, key, value} (a live edit) or {group, action:"save"}.
-    if method == "POST" and path == "/api/setting":
-        try:
-            d = json.loads(body_bytes or b"{}")
-        except (ValueError, TypeError):
-            return 400, "application/json", _json_bytes({"ok": False, "error": "bad json"})
-        group = str(d.get("group", ""))
-        action = str(d.get("action", ""))
-        if action == "save":
-            ok = bus.push_setting_save(group)
-            return (200 if ok else 400), "application/json", _json_bytes({"ok": bool(ok)})
-        if action == "reset":
-            ok = bus.push_setting_reset(group)
-            return (200 if ok else 400), "application/json", _json_bytes({"ok": bool(ok)})
-        ok = bus.push_setting(group, str(d.get("key", "")), d.get("value"))
-        return (200 if ok else 400), "application/json", _json_bytes({"ok": bool(ok)})
+            return _POST_ROUTES[path](_parse_object(body_bytes), bus, now)
+        except (ValueError, TypeError) as exc:
+            return 400, "application/json", _json_bytes({"ok": False, "error": str(exc)})
 
     return 404, "application/json", _json_bytes({"ok": False, "error": "not found"})
+
+
+def _post_command(d, bus, now):
+    bus.set_command(
+        now=now,
+        active=bool(d.get("active", False)),
+        l_x=d.get("l_x", 0.0), l_y=d.get("l_y", 0.0),
+        r_x=d.get("r_x", 0.0), r_y=d.get("r_y", 0.0),
+        left_trigger=d.get("left_trigger", 0.0),
+        right_trigger=d.get("right_trigger", 0.0),
+    )
+    return 200, "application/json", _json_bytes({"ok": True})
+
+
+def _post_button(d, bus, now):
+    ok = bus.push_button(str(d.get("button", "")), str(d.get("action", "press")))
+    return (200 if ok else 400), "application/json", _json_bytes({"ok": bool(ok)})
+
+
+def _post_trim(d, bus, now):
+    if str(d.get("action", "")) == "save":
+        bus.push_trim_save()
+        return 200, "application/json", _json_bytes({"ok": True})
+    ok = bus.push_trim(str(d.get("axis", "")), float(d.get("delta", 0.0)))
+    return (200 if ok else 400), "application/json", _json_bytes({"ok": bool(ok)})
+
+
+def _post_setting(d, bus, now):
+    """Generic live-settings channel: walk tuning, camera controls, antenna toggle,
+    joint offsets. Body is {group, key, value} (a live edit) or {group, action}."""
+    group = str(d.get("group", ""))
+    action = str(d.get("action", ""))
+    if action == "save":
+        ok = bus.push_setting_save(group)
+    elif action == "reset":
+        ok = bus.push_setting_reset(group)
+    else:
+        ok = bus.push_setting(group, str(d.get("key", "")), d.get("value"))
+    return (200 if ok else 400), "application/json", _json_bytes({"ok": bool(ok)})
+
+
+_POST_ROUTES = {
+    "/api/command": _post_command,
+    "/api/button": _post_button,
+    "/api/trim": _post_trim,
+    "/api/setting": _post_setting,
+}
 
 
 # GET paths the server owns. Any OTHER path is treated as a captive-portal probe
 # (iOS /hotspot-detect.html, Android /generate_204, Windows /connecttest.txt, or
 # any stray http URL a client opens) and 302-redirected to the control page, so
 # joining the duck's Wi-Fi pops the UI up automatically.
-_APP_GET_PATHS = ("/", "/index.html", "/healthz", "/favicon.ico")
+_APP_GET_PATHS = ("/", "/index.html", "/offsets", "/offsets.html", "/healthz", "/favicon.ico")
 
 
 def captive_target(path, portal_url):
@@ -151,8 +172,8 @@ def captive_probe_response(path, host="", user_agent=""):
     return None
 
 
-def _read_index():
-    path = os.path.join(WEBUI_DIR, "index.html")
+def _read_page(filename):
+    path = os.path.join(WEBUI_DIR, filename)
     try:
         with open(path, "rb") as f:
             return f.read(), "text/html; charset=utf-8"
@@ -236,7 +257,11 @@ def _make_handler(bus, clock, portal_url, camera_provider=None):
                 self._send(*r)
                 return
             if path in ("/", "/index.html"):
-                body, ct = _read_index()
+                body, ct = _read_page("index.html")
+                self._send(200, ct, body)
+                return
+            if path in ("/offsets", "/offsets.html"):
+                body, ct = _read_page("offsets.html")
                 self._send(200, ct, body)
                 return
             if path == "/healthz":

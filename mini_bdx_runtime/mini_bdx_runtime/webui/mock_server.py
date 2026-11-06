@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Dev mock for the Open Duck Mini web UI.
 
-Stdlib only. Serves ``index.html`` at ``/`` and a fake ``/api/state`` whose
-values drift over time so the phone UI can be previewed on a laptop with no
-robot attached. POSTs to ``/api/command`` and ``/api/button`` return
+Stdlib only. Serves ``index.html`` at ``/``, ``offsets.html`` at ``/offsets`` and a
+fake ``/api/state`` whose values drift over time so the phone UI can be previewed on
+a laptop with no robot attached. The offsets page runs on the real OffsetTuner. POSTs to ``/api/command`` and ``/api/button`` return
 ``{"ok": true}``, get printed, and nudge the fake state (e.g. tapping X flips
 the projector flag) so live-flag highlighting can be exercised too.
 
@@ -16,12 +16,17 @@ import json
 import math
 import os
 import struct
+import sys
 import time
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(HERE))  # append: the stdlib still wins any name clash
+from offset_tuner import OffsetTuner  # noqa: E402
+
 INDEX = os.path.join(HERE, "index.html")
+OFFSETS_PAGE = os.path.join(HERE, "offsets.html")
 START = time.time()
 
 # mutable bits toggled by button POSTs so the UI's flag highlighting is testable
@@ -30,6 +35,14 @@ REC = {"state": "idle", "frames": 0, "seconds": 0.0, "t0": 0.0}
 PAUSED = {"v": False}
 GAIT = {"v": 0.0}
 TRIM = {"pitch": 0.0, "roll": 0.0}   # radians; nudged by /api/trim
+TRIM_SAVED = {"pitch": 0.0, "roll": 0.0}
+TUNER = OffsetTuner({
+    "left_hip_yaw": -0.075, "left_hip_roll": 0.095, "left_hip_pitch": 0.084, "left_knee": 0.124,
+    "left_ankle": -0.055, "neck_pitch": 0.104, "head_pitch": -0.104, "head_yaw": -0.117,
+    "head_roll": 0.012, "right_hip_yaw": 0.041, "right_hip_roll": -0.027,
+    "right_hip_pitch": -0.084, "right_knee": 0.034, "right_ankle": 0.017,
+})
+STANCE = {"pose": [0.3] * 14, "goal": [0.0] * 14, "last": time.time()}
 FORCE_MODE = None  # set from --mode
 
 # live-tunable mocks, mutated by /api/setting so the TUNE panel round-trips
@@ -114,7 +127,10 @@ def build_state():
         "paused": PAUSED["v"],
         "battery": {"voltage": round(volt, 2), "percent": pct, "charging": charging},
         "imu": {"pitch": round(pitch, 1), "roll": round(roll, 1)},
-        "imu_trim": {"pitch": round(TRIM["pitch"], 4), "roll": round(TRIM["roll"], 4)},
+        "imu_trim": {"pitch": round(TRIM["pitch"], 4), "roll": round(TRIM["roll"], 4),
+                     "saved": {"pitch": round(TRIM_SAVED["pitch"], 4),
+                               "roll": round(TRIM_SAVED["roll"], 4)}},
+        "joint_offsets": _tick_offsets() if mode == "walk" else None,
         # governor enabled so the readout is exercised: severity tracks the wobble,
         # scale = 1 - 0.8*severity (floor 0.2), so it dips + warns as the duck tips.
         "governor": (lambda sev: {
@@ -147,6 +163,20 @@ def clamp(v, lo, hi):
     return lo if v < lo else hi if v > hi else v
 
 
+def _tick_offsets():
+    """Mirrors the walk loop: offsets only move on ticks that would write to the servos."""
+    now = time.time()
+    dt, STANCE["last"] = now - STANCE["last"], now
+    if not PAUSED["v"]:
+        TUNER.release()
+        STANCE["pose"] = [0.3] * 14       # "mid-stride" again for the next hold
+    if not PAUSED["v"] or TUNER.holding:
+        TUNER.step(dt)
+    if TUNER.holding:
+        STANCE["pose"] = TUNER.glide(STANCE["pose"], STANCE["goal"], dt)
+    return TUNER.snapshot()
+
+
 def handle_button(b):
     name, action = b.get("button"), b.get("action")
     if name == "X" and action == "press":
@@ -174,10 +204,14 @@ def handle_button(b):
 def handle_setting(body):
     group = body.get("group")
     if body.get("action") == "save":
+        if group == "joint_offsets":
+            TUNER.save(lambda fields: print("WOULD WRITE", fields))
         print("SETTING save", group)
         return
     if body.get("action") == "reset":
-        if group == "walk":
+        if group == "joint_offsets":
+            TUNER.revert()
+        elif group == "walk":
             WALK.update({"action_scale": 0.23, "action_scale_target": 0.23,
                          "velocity_clip": True, "max_motor_velocity_rad_s": 5.24})
             WALK["governor"] = {"enabled": True, "tilt_lo_deg": 10.0, "tilt_hi_deg": 25.0,
@@ -208,6 +242,11 @@ def handle_setting(body):
         CAM[key] = val
     elif group == "antenna" and key in ANT:
         ANT[key] = bool(val)
+    elif group == "stance" and key == "hold" and val:
+        PAUSED["v"] = True
+        TUNER.hold()
+    elif group == "joint_offsets":
+        TUNER.set_target(key, val)
     print("SETTING", group, key, val)
 
 
@@ -229,6 +268,9 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, f.read(), "text/html; charset=utf-8")
             except FileNotFoundError:
                 self._send(500, "index.html not found next to mock_server.py", "text/plain")
+        elif path in ("/offsets", "/offsets.html"):
+            with open(OFFSETS_PAGE, "rb") as f:
+                self._send(200, f.read(), "text/html; charset=utf-8")
         elif path == "/api/state":
             self._send(200, json.dumps(build_state()))
         elif path == "/api/camera/frame.jpg":
@@ -249,6 +291,7 @@ class Handler(BaseHTTPRequestHandler):
             print("BUTTON", body)
         elif path == "/api/trim":
             if body.get("action") == "save":
+                TRIM_SAVED.update(TRIM)
                 print("TRIM save", TRIM)
             else:
                 ax = body.get("axis")

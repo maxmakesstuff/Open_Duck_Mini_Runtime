@@ -222,6 +222,29 @@ Two touches that make tuning easy:
 - **↺ Reset to defaults** — each section (walk / camera / antennas, and the IMU-trim
   card) has a reset button that restores the known-good defaults with one tap.
 
+### 🎯 Joint offsets & IMU trim
+
+Dial in each joint's zero by eye, with the duck standing in front of you. Open **TUNE →
+JOINT OFFSETS & IMU TRIM** in Walk mode, or go straight to `http://<duck>:8080/offsets`.
+Use it to refine the rough zeros from `find_soft_offsets.py`, not to replace them.
+
+1. **Support the duck** with a stand or a hand.
+2. Tap **HOLD STANCE**. The walk stops and the legs glide to the standing pose. Joints
+   stay locked until then, on purpose: the duck is only worth judging in this pose.
+3. Pick a step size (**0.002 / 0.01 / 0.05 rad**), then tap **− / +** or type a value. A
+   change reaches the motor gently, however large it is. A dot marks every unsaved joint.
+4. **Try it:** resume with **A** or on the Control page and walk. Unsaved values stay
+   active until the next restart. Tap **HOLD STANCE** again to keep tuning.
+5. Tap **SAVE** when you're happy. It writes only `joints_offsets`, after backing up
+   `~/duck_config.json`. **REVERT** (two taps) glides back to the last saved values.
+
+The same page tunes the **IMU trim** and shows the saved value next to the live one.
+
+> Walk mode only. Head-puppet mode holds the legs at low stiffness, so they sag under the
+> duck's weight and what you would judge isn't the stance it walks on.
+
+Live offset tuning is based on a contribution by Gene Turnbow (SCIFI.radio).
+
 ---
 
 ## Sound feedback

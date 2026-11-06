@@ -1,0 +1,493 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#100E0A">
+<title>Open Duck Mini - Joint offsets</title>
+<!--
+  Joint-offset and IMU-trim calibration page. Idea and original page by Gene Turnbow
+  (SCIFI.radio). Self-contained like index.html: the duck's Wi-Fi has no internet.
+
+  The page holds no truth of its own. Every value comes from /api/state, which reports
+  what the control loop actually applied, so a refused edit snaps back on screen.
+  API contract: docs/webui-api.md
+-->
+<style>
+:root{
+  --void:#100E0A; --panel:#1B1710; --well:#241E15; --line:#3A2F1E;
+  --amber:#FFB020; --amber-hot:#FF7D1A; --ink:#F2E6CC; --dim:#93856B;
+  --ok:#78D18B; --alarm:#FF4B3A;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,"Cascadia Code",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  --glow:0 0 0 1px rgba(255,176,32,.15),0 0 18px -4px rgba(255,140,26,.35);
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+html,body{margin:0; min-height:100%; background:var(--void); color:var(--ink); font-family:var(--mono)}
+body{background-image:
+  radial-gradient(120% 60% at 50% -10%,rgba(255,140,26,.10),transparent 60%),
+  repeating-linear-gradient(0deg,rgba(255,176,32,.028) 0 1px,transparent 1px 3px)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+button{font:inherit; color:inherit; cursor:pointer; touch-action:manipulation}
+button:disabled{cursor:default}
+:focus-visible{outline:2px solid var(--amber); outline-offset:1px}
+[hidden]{display:none!important}
+
+#app{max-width:560px; margin:0 auto;
+  padding:calc(env(safe-area-inset-top) + 8px) 10px calc(env(safe-area-inset-bottom) + 18px)}
+@media (min-width:760px){
+  #app{max-width:760px}
+  .legs{display:grid; grid-template-columns:1fr 1fr; gap:0 16px}
+  .head-joints{display:grid; grid-template-columns:1fr 1fr; gap:0 16px}
+}
+
+#top{display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:34px; margin-bottom:8px}
+.brand{display:flex; align-items:center; gap:8px; min-width:0}
+.brand svg{width:30px; height:26px; color:var(--amber); flex:none; filter:drop-shadow(0 0 6px rgba(255,140,26,.4))}
+.bt{display:flex; flex-direction:column; line-height:1}
+.bt b{font-family:var(--sans); font-weight:800; font-size:13.5px}
+.bt span{font-size:8.5px; letter-spacing:.25em; color:var(--dim); margin-top:2px}
+.page-nav{display:flex; gap:5px; flex:none}
+.page-nav a{font-family:var(--sans); font-weight:800; font-size:10px; letter-spacing:.11em; text-decoration:none;
+  padding:9px 11px; border:1px solid var(--line); border-radius:999px; color:var(--dim); background:var(--well)}
+.page-nav a.active{color:var(--void); background:var(--amber); border-color:var(--amber); box-shadow:var(--glow)}
+
+.panel{background:linear-gradient(180deg,var(--panel),#17130d); border:1px solid var(--line);
+  border-radius:14px; padding:10px 12px; margin-bottom:8px}
+.panel-title{display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px}
+.lbl{font-size:9.5px; letter-spacing:.16em; color:var(--dim); text-transform:uppercase}
+.hint{font-size:10.5px; color:var(--dim); line-height:1.45}
+
+/* level readout */
+.tele{display:grid; grid-template-columns:auto 1fr; gap:12px; align-items:center}
+.att{position:relative; width:84px; height:84px; border-radius:50%; overflow:hidden;
+  border:2px solid var(--line); box-shadow:inset 0 0 14px rgba(0,0,0,.7),var(--glow)}
+.att-disc{position:absolute; left:-50%; top:-50%; width:200%; height:200%; transform-origin:50% 50%; transition:transform .16s linear}
+.sky{position:absolute; inset:0 0 50%; background:linear-gradient(#241d13,#171208)}
+.gnd{position:absolute; inset:50% 0 0; background:linear-gradient(#8a5a12,#c4831c); border-top:1.5px solid var(--amber)}
+.att-fix{position:absolute; inset:0; display:flex; align-items:center; justify-content:center}
+.att-fix:before,.att-fix:after{content:""; width:22px; height:2px; background:var(--ink)}
+.att-fix i{width:7px; height:7px; border:2px solid var(--ink); border-radius:50%; margin:0 3px}
+.att.stale{filter:grayscale(.6) opacity(.5)}
+.readouts{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+.read{background:var(--well); border:1px solid var(--line); border-radius:9px; padding:8px 9px}
+.read b{display:block; color:var(--amber); font-size:17px; font-weight:400; margin-top:3px; font-variant-numeric:tabular-nums}
+#link{font-size:9.5px; letter-spacing:.1em; color:var(--dim)}
+#link.live{color:var(--ok)}
+#link.lost{color:var(--alarm)}
+
+/* the state of the duck, and the one thing to do about it */
+#state{border-left:3px solid var(--amber)}
+#state.holding{border-left-color:var(--ok)}
+#state.lost{border-left-color:var(--alarm)}
+#stateTitle{font-family:var(--sans); font-weight:800; font-size:12.5px; letter-spacing:.04em; margin-bottom:4px}
+#holdBtn{width:100%; min-height:46px; margin-top:9px; border-radius:9px; border:1px solid var(--amber);
+  background:var(--amber); color:var(--void); font-family:var(--sans); font-weight:800; font-size:12px;
+  letter-spacing:.12em; box-shadow:var(--glow)}
+#holdBtn:active{background:var(--amber-hot)}
+
+/* step size */
+.steps{display:flex; gap:4px}
+.steps button{min-height:38px; min-width:50px; padding:0 8px; border:1px solid var(--line); border-radius:8px;
+  background:var(--well); color:var(--dim); font-size:11px; font-variant-numeric:tabular-nums}
+.steps button[aria-pressed=true]{color:var(--void); background:var(--amber); border-color:var(--amber)}
+
+/* joints */
+.group h2{font-size:9.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--amber); margin:10px 2px 5px; font-weight:500}
+.joint{display:grid; grid-template-columns:minmax(0,1fr) 44px 84px 44px; gap:5px; align-items:center; margin-bottom:5px}
+.joint-name{font-family:var(--sans); font-size:12.5px; font-weight:700; min-width:0; padding-left:12px; position:relative}
+.joint-name small{display:block; font-family:var(--mono); font-weight:400; font-size:10px; color:var(--dim); margin-top:2px; font-variant-numeric:tabular-nums}
+.joint.dirty .joint-name:before{content:""; position:absolute; left:1px; top:5px; width:6px; height:6px;
+  border-radius:50%; background:var(--amber); box-shadow:0 0 6px var(--amber)}
+.joint.dirty .joint-name small{color:var(--amber)}
+.stepper{height:44px; border:1px solid var(--line); border-radius:8px; background:var(--void); color:var(--amber); font-size:22px; line-height:1}
+.stepper:not(:disabled):active{background:var(--amber); color:var(--void)}
+/* 16px: iOS zooms the whole page when focusing a smaller input */
+.value{width:100%; height:44px; border:1px solid var(--line); border-radius:8px; background:var(--void);
+  color:var(--ink); font:16px var(--mono); letter-spacing:-.02em; text-align:center; font-variant-numeric:tabular-nums; padding:0}
+.value:focus{border-color:var(--amber); box-shadow:var(--glow); outline:none}
+:disabled{opacity:.42}
+
+.actions{position:sticky; bottom:calc(env(safe-area-inset-bottom) + 6px); display:flex; gap:7px; margin-top:10px; z-index:2}
+.btn{flex:1; min-height:46px; border-radius:9px; border:1px solid var(--line); font-family:var(--sans);
+  font-size:11px; font-weight:800; letter-spacing:.1em}
+.primary{background:var(--amber); color:var(--void); border-color:var(--amber); box-shadow:var(--glow)}
+.secondary{background:var(--well); color:var(--ink)}
+.secondary.armed{border-color:var(--alarm); color:var(--alarm)}
+.actions.static{position:static}
+.actions .btn:disabled{opacity:1; background:var(--well); color:var(--dim); border-color:var(--line); box-shadow:none}
+
+/* IMU trim */
+.trim-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+.trim-card{background:var(--well); border:1px solid var(--line); border-radius:9px; padding:9px}
+.trim-card b{display:block; color:var(--amber); font-size:14px; font-weight:400; margin:4px 0; font-variant-numeric:tabular-nums}
+.trim-card small{display:block; color:var(--dim); font-size:9.5px; font-variant-numeric:tabular-nums}
+.nudges{display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px}
+.nudge{min-height:44px; border-radius:8px; border:1px solid var(--line); background:var(--void); color:var(--amber); font-size:20px}
+.nudge:not(:disabled):active{background:var(--amber); color:var(--void)}
+
+footer{font-size:9.5px; color:var(--dim); text-align:center; margin-top:12px; line-height:1.5}
+#toast{position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom) + 66px); transform:translateX(-50%); padding:9px 15px;
+  border-radius:999px; background:var(--ok); color:var(--void); font-family:var(--sans); font-size:11px; font-weight:800;
+  opacity:0; pointer-events:none; transition:opacity .15s; z-index:5; max-width:92vw; text-align:center}
+#toast.show{opacity:1}
+#toast.err{background:var(--alarm); color:#fff}
+</style>
+
+<div id="app">
+  <header id="top">
+    <div class="brand">
+      <svg viewBox="0 0 48 40" aria-hidden="true"><circle cx="19" cy="19" r="12.5" fill="currentColor"/><path d="M30 14 L47 16.5 L47 23 L30 23 Z" fill="currentColor"/><circle cx="16" cy="15.5" r="2.6" fill="#100E0A"/></svg>
+      <div class="bt"><b>OPEN DUCK MINI</b><span>CALIBRATION</span></div>
+    </div>
+    <nav class="page-nav"><a href="/">CONTROL</a><a class="active" href="/offsets" aria-current="page">OFFSETS</a></nav>
+  </header>
+
+  <section class="panel tele" id="level">
+    <div class="att stale" id="att">
+      <div class="att-disc" id="attDisc"><div class="sky"></div><div class="gnd"></div></div>
+      <div class="att-fix"><i></i></div>
+    </div>
+    <div>
+      <div class="panel-title"><span class="lbl">Level</span><span id="link">CONNECTING</span></div>
+      <div class="readouts">
+        <div class="read"><span class="lbl">Pitch</span><b id="pitch">--</b></div>
+        <div class="read"><span class="lbl">Roll</span><b id="roll">--</b></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="state" aria-live="polite">
+    <div id="stateTitle">Connecting to the duck</div>
+    <div class="hint" id="stateText"></div>
+    <button id="holdBtn" type="button" hidden>HOLD STANCE</button>
+  </section>
+
+  <section class="panel" id="offsetsPanel" hidden>
+    <div class="panel-title">
+      <span class="lbl">Joint offsets (rad)</span>
+      <div class="steps" id="steps" role="group" aria-label="Step size per press"></div>
+    </div>
+    <div class="legs">
+      <div class="group" id="group-left"><h2>Left leg</h2></div>
+      <div class="group" id="group-right"><h2>Right leg</h2></div>
+    </div>
+    <div class="group"><h2>Head</h2><div class="head-joints" id="group-head"></div></div>
+    <div class="actions">
+      <button class="btn secondary" id="revert" type="button">REVERT</button>
+      <button class="btn primary" id="save" type="button">SAVED</button>
+    </div>
+  </section>
+
+  <section class="panel" id="trimPanel" hidden>
+    <div class="panel-title"><span class="lbl">IMU trim (rad)</span><span class="hint">live / saved</span></div>
+    <div class="trim-grid">
+      <div>
+        <div class="trim-card"><span class="lbl">Pitch</span><b id="trimPitch">--</b><small id="trimPitchSaved">saved --</small></div>
+        <div class="nudges">
+          <button class="nudge" type="button" data-axis="pitch" data-delta="-0.002" aria-label="Decrease pitch trim">−</button>
+          <button class="nudge" type="button" data-axis="pitch" data-delta="0.002" aria-label="Increase pitch trim">+</button>
+        </div>
+      </div>
+      <div>
+        <div class="trim-card"><span class="lbl">Roll</span><b id="trimRoll">--</b><small id="trimRollSaved">saved --</small></div>
+        <div class="nudges">
+          <button class="nudge" type="button" data-axis="roll" data-delta="-0.002" aria-label="Decrease roll trim">−</button>
+          <button class="nudge" type="button" data-axis="roll" data-delta="0.002" aria-label="Increase roll trim">+</button>
+        </div>
+      </div>
+    </div>
+    <div class="actions static">
+      <button class="btn primary" id="saveTrim" type="button">SAVED</button>
+    </div>
+  </section>
+
+  <footer>Live offset tuning: idea and original page by Gene Turnbow (SCIFI.radio)</footer>
+</div>
+<div id="toast" role="status"></div>
+
+<script>
+"use strict";
+const GROUPS = {
+  left: [["left_hip_yaw", "Hip yaw"], ["left_hip_roll", "Hip roll"], ["left_hip_pitch", "Hip pitch"],
+         ["left_knee", "Knee"], ["left_ankle", "Ankle"]],
+  right: [["right_hip_yaw", "Hip yaw"], ["right_hip_roll", "Hip roll"], ["right_hip_pitch", "Hip pitch"],
+          ["right_knee", "Knee"], ["right_ankle", "Ankle"]],
+  head: [["neck_pitch", "Neck pitch"], ["head_pitch", "Head pitch"], ["head_yaw", "Head yaw"], ["head_roll", "Head roll"]],
+};
+// One press: about 1 encoder count, about half a degree, about 3 degrees.
+const STEPS = [0.002, 0.01, 0.05];
+const POLL_MS = 250, REQUEST_TIMEOUT_MS = 2000, PENDING_MS = 1500, SAVE_SETTLE_MS = 500, SAVE_TIMEOUT_MS = 3000;
+
+const $ = id => document.getElementById(id);
+const rows = {};        // joint -> {row, input, degrees, buttons}
+const pending = {};     // joint -> {value, until}: edits telemetry hasn't confirmed yet
+let state = null;       // last /api/state
+let online = false;
+let step = STEPS[1];
+let saveWatch = null;   // see watchSave()
+let revertArmedUntil = 0;
+
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const round4 = v => Math.round(v * 1e4) / 1e4;
+const signed = (v, digits = 4) => (v >= 0 ? "+" : "") + v.toFixed(digits);
+const degrees = rad => signed(rad * 180 / Math.PI, 2) + "°";
+
+let toastTimer = 0;
+function toast(message, ok = true) {
+  const el = $("toast");
+  el.textContent = message;
+  el.className = "show" + (ok ? "" : " err");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ""; }, 2400);
+}
+
+async function request(path, options) {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(path, { cache: "no-store", ...options, signal: abort.signal });
+    const data = await response.json();
+    if (!response.ok || data.ok === false) throw new Error(data.error || "request refused");
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Every write goes through one queue, so edits and Save reach the duck in the order you
+// tapped them, even on a laggy link: Save can never overtake the edit before it.
+let queue = Promise.resolve();
+function send(path, body) {
+  queue = queue
+    .then(() => request(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }))
+    .catch(error => toast("NOT SENT: " + error.message, false));
+  return queue;
+}
+
+/* ------------------------------ joint offsets ------------------------------ */
+function buildRows() {
+  for (const [group, joints] of Object.entries(GROUPS)) {
+    const box = $("group-" + group);
+    const side = group === "head" ? "" : group + " ";
+    for (const [joint, label] of joints) {
+      const row = document.createElement("div");
+      row.className = "joint";
+      row.innerHTML =
+        `<div class="joint-name">${label}<small></small></div>` +
+        `<button class="stepper" type="button" aria-label="Decrease ${side}${label}">−</button>` +
+        // Not inputmode=decimal: the iPhone's decimal pad has no minus key, and half of
+        // all offsets are negative.
+        `<input class="value" type="text" inputmode="text" autocomplete="off" autocapitalize="off"
+                autocorrect="off" spellcheck="false" enterkeyhint="done" aria-label="${side}${label} offset in radians">` +
+        `<button class="stepper" type="button" aria-label="Increase ${side}${label}">+</button>`;
+      box.appendChild(row);
+      const [minus, plus] = row.querySelectorAll("button");
+      const input = row.querySelector("input");
+      minus.addEventListener("click", () => setOffset(joint, currentOffset(joint) - step));
+      plus.addEventListener("click", () => setOffset(joint, currentOffset(joint) + step));
+      input.addEventListener("change", () => commitTyped(joint, input));
+      input.addEventListener("focus", () => input.select());
+      input.addEventListener("keydown", event => {
+        if (event.key === "Enter") { event.preventDefault(); input.blur(); }
+      });
+      rows[joint] = { row, input, degrees: row.querySelector("small"), buttons: [minus, plus] };
+    }
+  }
+}
+
+function currentOffset(joint) {
+  const edit = pending[joint];
+  if (edit && Date.now() < edit.until) return edit.value;
+  return Number(state?.joint_offsets?.offsets?.[joint] ?? 0);
+}
+
+function offsetWindow(joint) {
+  const data = state.joint_offsets;
+  const saved = Number(data.saved[joint] ?? 0);
+  return [Math.min(-data.limit, saved), Math.max(data.limit, saved)];
+}
+
+function setOffset(joint, value) {
+  const [lo, hi] = offsetWindow(joint);
+  const target = round4(clamp(value, lo, hi));
+  pending[joint] = { value: target, until: Date.now() + PENDING_MS };
+  send("/api/setting", { group: "joint_offsets", key: joint, value: target });
+  render();
+  return target;
+}
+
+function commitTyped(joint, input) {
+  // Accept "0,12" (German keyboards) and the typographic minus.
+  const value = Number(input.value.trim().replace(",", ".").replace("−", "-"));
+  if (input.value.trim() === "" || !Number.isFinite(value)) {
+    toast("ENTER A NUMBER", false);   // the next poll restores the real value
+    return;
+  }
+  if (setOffset(joint, value) !== round4(value)) toast("LIMITED TO THE SAFE RANGE", false);
+}
+
+function renderOffsets() {
+  const data = state.joint_offsets;
+  let unsaved = 0;
+  for (const [joint, { row, input, degrees: deg, buttons }] of Object.entries(rows)) {
+    const confirmed = Number(data.offsets[joint] ?? 0);
+    if (pending[joint] && (pending[joint].value === confirmed || Date.now() >= pending[joint].until)) {
+      delete pending[joint];
+    }
+    const shown = currentOffset(joint);
+    const dirty = shown !== Number(data.saved[joint] ?? 0);
+    if (dirty) unsaved++;
+    row.classList.toggle("dirty", dirty);
+    if (document.activeElement !== input) input.value = signed(shown);
+    deg.textContent = degrees(shown) + (dirty ? " · unsaved" : "");
+    const locked = !online || !data.holding;
+    input.disabled = locked;
+    buttons.forEach(button => { button.disabled = locked; });
+  }
+  const save = $("save");
+  save.disabled = !online || unsaved === 0;
+  save.textContent = unsaved === 0 ? "SAVED" : `SAVE ${unsaved} CHANGE${unsaved === 1 ? "" : "S"}`;
+  const revert = $("revert");
+  revert.disabled = !online || !data.holding || unsaved === 0;
+  const armed = !revert.disabled && Date.now() < revertArmedUntil;
+  revert.classList.toggle("armed", armed);
+  revert.textContent = armed ? "TAP AGAIN" : "REVERT";
+}
+
+/* --------------------------------- IMU trim --------------------------------- */
+function renderTrim() {
+  const trim = state.imu_trim;
+  const saved = trim.saved || trim;
+  $("trimPitch").textContent = signed(trim.pitch) + " · " + degrees(trim.pitch);
+  $("trimRoll").textContent = signed(trim.roll) + " · " + degrees(trim.roll);
+  $("trimPitchSaved").textContent = "saved " + signed(saved.pitch);
+  $("trimRollSaved").textContent = "saved " + signed(saved.roll);
+  const dirty = trim.pitch !== saved.pitch || trim.roll !== saved.roll;
+  const button = $("saveTrim");
+  button.disabled = !online || !dirty;
+  button.textContent = dirty ? "SAVE IMU TRIM" : "SAVED";
+  document.querySelectorAll(".nudge").forEach(nudge => { nudge.disabled = !online; });
+}
+
+/* ------------------------------- page state ------------------------------- */
+function describeState() {
+  if (!online) return { css: "lost", title: "Lost the duck", text: "Reconnecting. Nothing is sent until the link is back." };
+  const data = state.joint_offsets;
+  if (state.mode === "head_puppet" || !data) {
+    return { css: "", title: "Offsets are tuned in Walk mode",
+      text: "Head-puppet mode holds the legs at low stiffness, so they sag under the duck's weight and the stance you would judge is not the one it walks on. Restart in Walk mode to tune here." };
+  }
+  if (data.holding) {
+    return data.moving
+      ? { css: "holding", title: "Moving", text: "Gliding to the new position. Keep a hand on the duck." }
+      : { css: "holding", title: "Holding stance", text: "Edits reach the motors right away, at a gentle speed. To try them, resume with A or on the Control page. Unsaved values last until the next restart." };
+  }
+  return { css: "", hold: true, title: state.paused ? "Paused" : "Walking",
+    text: "Offsets stay locked until the duck holds its standing pose. Support the duck first: holding the stance moves the legs." };
+}
+
+function render() {
+  const view = describeState();
+  $("state").className = "panel " + view.css;
+  $("stateTitle").textContent = view.title;
+  $("stateText").textContent = view.text;
+  $("holdBtn").hidden = !view.hold;
+  const link = $("link");
+  link.textContent = online ? "LIVE" : "RECONNECTING";
+  link.className = online ? "live" : "lost";
+  if (!state) return;
+
+  const hasOffsets = !!state.joint_offsets;
+  $("offsetsPanel").hidden = !hasOffsets;
+  if (hasOffsets) renderOffsets();
+  $("trimPanel").hidden = !state.imu_trim;
+  if (state.imu_trim) renderTrim();
+
+  const imu = state.imu;
+  $("att").classList.toggle("stale", !online || !imu);
+  if (imu) {
+    $("pitch").textContent = signed(Number(imu.pitch), 1) + "°";
+    $("roll").textContent = signed(Number(imu.roll), 1) + "°";
+    const pitch = clamp(Number(imu.pitch), -35, 35);
+    $("attDisc").style.transform = `rotate(${-Number(imu.roll)}deg) translateY(${pitch * 0.7}px)`;
+  } else {
+    $("pitch").textContent = $("roll").textContent = "--";
+  }
+}
+
+/* A save is only "saved" once the loop says so: the POST just queues the request. The
+   first polls after a tap can still describe the moment before it, so they don't count. */
+function watchSave(isDone, okMessage, errorOf = () => "") {
+  const now = Date.now();
+  saveWatch = { isDone, okMessage, errorOf, from: now + SAVE_SETTLE_MS, until: now + SAVE_TIMEOUT_MS };
+}
+function checkSave() {
+  const watch = saveWatch;
+  if (!watch || !state || Date.now() < watch.from) return;
+  const error = watch.errorOf(state);
+  if (error) { toast(error.toUpperCase(), false); saveWatch = null; }
+  else if (watch.isDone(state)) { toast(watch.okMessage); saveWatch = null; }
+  else if (Date.now() > watch.until) { toast("NO CONFIRMATION FROM THE DUCK. NOT SAVED?", false); saveWatch = null; }
+}
+
+async function poll() {
+  try {
+    state = await request("/api/state");
+    online = true;
+  } catch (error) {
+    online = false;
+  }
+  render();
+  checkSave();
+  setTimeout(poll, POLL_MS);
+}
+
+/* ------------------------------- wiring ------------------------------- */
+function buildSteps() {
+  for (const size of STEPS) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = size;
+    button.setAttribute("aria-label", `${size} radians per press`);
+    button.setAttribute("aria-pressed", String(size === step));
+    button.addEventListener("click", () => {
+      step = size;
+      $("steps").querySelectorAll("button").forEach(other => other.setAttribute("aria-pressed", String(other === button)));
+    });
+    $("steps").appendChild(button);
+  }
+}
+
+$("holdBtn").addEventListener("click", () => send("/api/setting", { group: "stance", key: "hold", value: true }));
+$("save").addEventListener("click", () => {
+  send("/api/setting", { group: "joint_offsets", action: "save" });
+  watchSave(s => s.joint_offsets && !s.joint_offsets.dirty, "OFFSETS SAVED", s => s.joint_offsets?.error);
+});
+$("revert").addEventListener("click", () => {
+  if (Date.now() >= revertArmedUntil) {       // one stray tap must not lose a tuning session
+    revertArmedUntil = Date.now() + 3000;
+    render();
+    return;
+  }
+  revertArmedUntil = 0;
+  for (const joint of Object.keys(pending)) delete pending[joint];
+  send("/api/setting", { group: "joint_offsets", action: "reset" });
+  toast("BACK TO THE SAVED OFFSETS");
+});
+$("saveTrim").addEventListener("click", () => {
+  send("/api/trim", { action: "save" });
+  watchSave(s => s.imu_trim && s.imu_trim.saved
+    && s.imu_trim.pitch === s.imu_trim.saved.pitch && s.imu_trim.roll === s.imu_trim.saved.roll, "IMU TRIM SAVED");
+});
+document.querySelectorAll(".nudge").forEach(button => button.addEventListener("click", () => {
+  send("/api/trim", { axis: button.dataset.axis, delta: Number(button.dataset.delta) });
+}));
+
+buildRows();
+buildSteps();
+render();
+poll();
+</script>

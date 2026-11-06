@@ -59,10 +59,12 @@ $Files = @(
   'mini_bdx_runtime/mini_bdx_runtime/imu_trim.py',
   'mini_bdx_runtime/mini_bdx_runtime/stability_governor.py',
   'mini_bdx_runtime/mini_bdx_runtime/walk_defaults.py',
+  'mini_bdx_runtime/mini_bdx_runtime/offset_tuner.py',
   'mini_bdx_runtime/mini_bdx_runtime/antennas.py',
   'mini_bdx_runtime/mini_bdx_runtime/antenna_anim.py',
   # --- Web UI page (served by web_control.py) ---
   'mini_bdx_runtime/mini_bdx_runtime/webui/index.html',
+  'mini_bdx_runtime/mini_bdx_runtime/webui/offsets.html',
   'mini_bdx_runtime/mini_bdx_runtime/webui/mock_server.py',
   # --- scanner sounds ---
   'mini_bdx_runtime/assets/scanner/lamp.wav',

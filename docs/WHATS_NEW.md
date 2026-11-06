@@ -21,6 +21,25 @@ newcomer can bring a duck up, tune it, and enjoy it without living in the termin
 
 ---
 
+## Next release (unreleased)
+
+**Joint offsets from your phone** (`/offsets`, or **TUNE** in Walk mode), based on a
+contribution by **Gene Turnbow** ([SCIFI.radio](https://scifi.radio/)). Hold the stance,
+nudge any joint, check the level readout, try a few steps, save. Edits only apply while
+the duck holds its stance and always reach the motor at a limited speed. Unsaved values
+stay active until restart; Save writes only `joints_offsets`, backup first. See the
+[User Guide](USER_GUIDE.md#-joint-offsets--imu-trim).
+
+Also new, found on the way:
+
+- The attitude horizon no longer freezes while the walk is paused.
+- `NaN` and infinite values are refused on every Web UI route. They could previously
+  reach the motor targets through the sticks, the IMU trim or the tuning sliders.
+- `~/duck_config.json` is now written atomically: a power cut mid-save can no longer leave
+  a truncated calibration file behind.
+
+---
+
 ## 1. Rock-solid walking — stability
 
 The stock policy walks, but it can be twitchy and tip over on anything but a perfect

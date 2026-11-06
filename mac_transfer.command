@@ -86,10 +86,12 @@ FILES=(
   "mini_bdx_runtime/mini_bdx_runtime/imu_trim.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/stability_governor.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/walk_defaults.py|mini_bdx_runtime/mini_bdx_runtime"
+  "mini_bdx_runtime/mini_bdx_runtime/offset_tuner.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/antennas.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/antenna_anim.py|mini_bdx_runtime/mini_bdx_runtime"
   # --- Web UI page (served by web_control.py) ---
   "mini_bdx_runtime/mini_bdx_runtime/webui/index.html|mini_bdx_runtime/mini_bdx_runtime/webui"
+  "mini_bdx_runtime/mini_bdx_runtime/webui/offsets.html|mini_bdx_runtime/mini_bdx_runtime/webui"
   "mini_bdx_runtime/mini_bdx_runtime/webui/mock_server.py|mini_bdx_runtime/mini_bdx_runtime/webui"
   # --- scanner sounds ---
   "mini_bdx_runtime/assets/scanner/lamp.wav|mini_bdx_runtime/assets/scanner"
@@ -189,6 +191,7 @@ cat <<'EOF'
    2. Motors (skip if IDs already set): python scripts/configure_all_motors.py
         (a brand-new servo first: python scripts/configure_motor.py --id <n>)
    3. Zero offsets:  python scripts/find_soft_offsets.py    (writes joints_offsets)
+                     Fine-tune later from your phone: http://<duck>:8080/offsets
    4. IMU:           python scripts/calibrate_imu.py
                      python scripts/imu_health_check.py      (writes imu_trim; set
                      "imu_upside_down": true if the BNO055 is mounted inverted)

@@ -39,6 +39,19 @@ Recent commits (`git log --oneline`): stability levers `0cdc069`, config baselin
 `acfb147`, captive portal `2754311`+`bd146d9`, German manual `08e2010`, second-duck
 deploy `f8c7635`. The pre-session baseline is `37c7638`.
 
+### New 2026-11-06 — **NOT yet tested on hardware**
+
+**Live joint offsets** (`/offsets`, `webui/offsets.html` + `offset_tuner.py`), based on a
+contribution by Gene Turnbow (SCIFI.radio). The control loop owns the state; the server
+stays stateless and only forwards edits over `/api/setting` (groups `joint_offsets`,
+`stance`). Walk mode only. Validated by `test_walk_calibration.py`, which runs the real
+`RLWalk.run()` on a fake servo bus, and in a browser on `mock_server.py`. First on-robot
+check: tap HOLD STANCE with the duck supported, confirm the glide is gentle, nudge one
+joint, save, then diff `~/duck_config.json` against its `.bak`.
+
+The page's **Save is the one sanctioned way a running walk rewrites `joints_offsets`**
+(rule 3 below): explicit user action, backup first, untouched joints byte-identical.
+
 ### New this session (2026-07-30) — **NOT yet tested on hardware**
 
 Three features added; all pure logic is unit-tested (19 test files green) and every

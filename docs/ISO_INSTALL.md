@@ -253,7 +253,8 @@ user (`OPENDUCK_USER`), the model file (`ONNX_MODEL_PATH`), and the switch GPIOs
 - **Error-clicking noise from the speaker:** the mode started without a connected
   Xbox controller — turn it on and reboot (or restart the service).
 - **Only ~7 GB of the card is usable:** run the filesystem expansion (Section 3).
-- **Motion feels off / duck won't balance:** re-run the offsets and IMU steps of
+- **Motion feels off / duck won't balance:** fine-tune live on your phone (**TUNE → JOINT
+  OFFSETS & IMU TRIM** in Walk mode), or re-run the offsets and IMU steps of
   `first_time_setup.py` — calibration is per-robot.
 - **Security:** change the SSH password (`passwd`) and the hotspot password
   (Section 2.1) as part of setup, so you don't get duck-napped.

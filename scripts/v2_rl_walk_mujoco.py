@@ -22,6 +22,7 @@ from mini_bdx_runtime.stability_governor import (
 )
 from mini_bdx_runtime.antenna_anim import AntennaAnimator
 from mini_bdx_runtime.walk_defaults import WALK_TUNING_DEFAULTS, IMU_TRIM_DEFAULTS
+from mini_bdx_runtime.offset_tuner import OffsetTuner
 # Optional: Web UI + scanner sound. The walk still runs if these are absent.
 try:
     from mini_bdx_runtime.control_bus import ControlBus
@@ -160,6 +161,17 @@ class RLWalk:
         )
 
         self.feet_contacts = FeetContacts()
+
+        # Live joint-offset tuning from the phone (webui/offsets.html). It edits the
+        # HWI's own offsets dict, so there is exactly one set of offsets in the process.
+        self.offset_tuner = OffsetTuner(self.hwi.joints_offsets)
+        self._tick_dt = 0.0
+        # Last persisted IMU trim, reported next to the live one so the page can show
+        # unsaved changes without re-reading the config file.
+        self._imu_trim_saved = {
+            "pitch": float(self.duck_config.imu_trim.get("pitch", 0.0)),
+            "roll": float(self.duck_config.imu_trim.get("roll", 0.0)),
+        }
 
         # Scales
         # action_scale precedence: explicit CLI > duck_config > 0.25 default.
@@ -438,6 +450,7 @@ class RLWalk:
         from mini_bdx_runtime.duck_config import save_config_fields
         trim = {"pitch": float(self.imu.pitch_trim), "roll": float(self.imu.roll_trim)}
         backup = save_config_fields({"imu_trim": trim})
+        self._imu_trim_saved = trim
         print(f"[trim] SAVED imu_trim={trim} (backup {backup})")
 
     # ------------------------------------------------- live web settings (walk) ---
@@ -447,6 +460,17 @@ class RLWalk:
         if self.web_bus is None:
             return
         settings, saves, resets = self.web_bus.consume_settings()
+        # Stance first: a hold and an edit can arrive in the same tick.
+        if (settings.get("stance") or {}).get("hold"):
+            self._enter_stance_hold()
+        for joint, value in (settings.get("joint_offsets") or {}).items():
+            if not self.offset_tuner.set_target(joint, value):
+                print(f"[offsets] refused {joint}={value!r} (hold stance first; "
+                      "value must be a finite number)")
+        if "joint_offsets" in resets and not self.offset_tuner.revert():
+            print("[offsets] refused revert (hold stance first)")
+        if "joint_offsets" in saves:
+            self._save_joint_offsets()
         if settings.get("walk"):
             self._apply_walk_settings(settings["walk"])
         if settings.get("antenna"):
@@ -557,6 +581,38 @@ class RLWalk:
         backup = save_config_fields(fields)
         print(f"[antennas] SAVED {fields} (backup {backup})")
 
+    # ------------------------------------------- joint-offset page (stance hold) ---
+    def _enter_stance_hold(self):
+        """Pause and glide to the standing pose, the only pose where an offset error
+        can be judged. A plain pause keeps the last mid-stride goal, which can't be."""
+        self.paused = True
+        if self.recorder.state == "playing":
+            self.recorder.state = "idle"
+        if not self.offset_tuner.holding:
+            print("[offsets] HOLD STANCE: gliding to the standing pose. Support the duck.")
+        self.offset_tuner.hold()
+        # The pose is about to be init_pos, which is what action 0 means. Clearing the
+        # history gives the policy the same clean start as a fresh boot on resume.
+        self.last_action = np.zeros(self.num_dofs)
+        self.last_last_action = np.zeros(self.num_dofs)
+        self.last_last_last_action = np.zeros(self.num_dofs)
+
+    def _hold_stance_tick(self):
+        self.motor_targets = np.array(
+            self.offset_tuner.glide(self.motor_targets, self.init_pos, self._tick_dt)
+        )
+        self.prev_motor_targets = self.motor_targets.copy()
+        self.hwi.set_position_all(
+            make_action_dict(self.motor_targets, list(self.hwi.joints.keys()))
+        )
+
+    def _save_joint_offsets(self):
+        from mini_bdx_runtime.duck_config import save_config_fields
+        if self.offset_tuner.save(save_config_fields):
+            print("[offsets] SAVED joints_offsets (previous config backed up)")
+        else:
+            print(f"[offsets] {self.offset_tuner.error}")
+
     def _publish_telemetry(self, now):
         if self.web_bus is None or build_state is None:
             return
@@ -584,7 +640,9 @@ class RLWalk:
             imu=_accel_pitch_roll(self._last_imu.get("accelero") if self._last_imu else None),
             gait_offset=self.phase_frequency_factor_offset,
             imu_trim={"pitch": float(self.imu.pitch_trim),
-                      "roll": float(self.imu.roll_trim)},
+                      "roll": float(self.imu.roll_trim),
+                      "saved": self._imu_trim_saved},
+            joint_offsets=self.offset_tuner.snapshot(),
             governor={"enabled": self.governor.enabled,
                       "scale": round(float(self._gov_scale), 3),
                       "severity": round(float(self._gov_severity), 3)},
@@ -692,8 +750,9 @@ class RLWalk:
 
                 # loop-rate estimate for the Web UI
                 if self._last_tick_t is not None:
+                    self._tick_dt = t - self._last_tick_t
                     self.loop_hz = 0.9 * self.loop_hz + 0.1 * (
-                        1.0 / max(1e-6, t - self._last_tick_t)
+                        1.0 / max(1e-6, self._tick_dt)
                     )
                 self._last_tick_t = t
 
@@ -788,6 +847,13 @@ class RLWalk:
                 # live walk-tuning / antenna edits from the Web UI (apply + save)
                 self._consume_web_settings()
 
+                # Offsets only slew on ticks that write to the servos. Advancing them
+                # during a plain pause would bank a jump for the next write.
+                if not self.paused:
+                    self.offset_tuner.release()
+                if not self.paused or self.offset_tuner.holding:
+                    self.offset_tuner.step(self._tick_dt)
+
                 # ramp action_scale toward its web-set target (no sudden amplitude jump)
                 if self.action_scale != self._action_scale_target:
                     self.action_scale += float(np.clip(
@@ -799,7 +865,13 @@ class RLWalk:
                 self._publish_telemetry(t)
 
                 if self.paused:
-                    time.sleep(0.1)
+                    # get_obs() doesn't run while paused; keep the horizon live anyway.
+                    self._last_imu = self.imu.get_data()
+                    if self.offset_tuner.holding:
+                        self._hold_stance_tick()
+                        time.sleep(1 / self.control_freq)
+                    else:
+                        time.sleep(0.1)
                     continue
 
                 # ---- fall detection -> auto-pause ----

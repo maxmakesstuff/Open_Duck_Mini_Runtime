@@ -76,6 +76,9 @@ steadier balance and a calmer, planted gait, no tip-overs.
 - 🎛️ **Live tuning from your phone** — sliders for every walk / camera / antenna
   parameter, with **ⓘ tap-to-explain hints** and **↺ reset-to-known-good-defaults** on
   each section. Nothing persists until you press Save.
+- 🎯 **Joint offsets from your phone** — hold the stance, nudge any joint, watch the
+  level readout, save. Getting a new duck walking no longer takes a terminal session per
+  joint. Based on a contribution by **Gene Turnbow** ([SCIFI.radio](https://scifi.radio/)).
 - 🔋 **Battery % that actually works** — read from the servos via a safe bus handoff
   (the Pi has no voltage sensor).
 - 📷 **Live camera view + tuning** — see the feed on your phone, dial in exposure/gain/
@@ -107,6 +110,9 @@ open **TUNE** for the **live camera view** + camera settings and the antenna con
 </td>
 </tr>
 </table>
+
+Walk mode's **TUNE** panel also opens the **calibration page** (`/offsets`): live joint
+offsets and IMU trim, with the saved value next to each live one.
 
 No app, no internet, no pairing: a stdlib HTTP server on the robot serves one
 self-contained page. Preview it on your laptop with **no robot** via
@@ -186,6 +192,8 @@ head-puppet, **D-pad ↑** toggles face-tracking. *(Full per-mode map in the
   foundations (the policy, the hardware bring-up, the base runtime) are theirs. The
   trained walking policy comes from the sister project
   [Open_Duck_Mini](https://github.com/apirrone/Open_Duck_Mini). 🙏
+- **Contributor:** **Gene Turnbow** ([SCIFI.radio](https://scifi.radio/)) contributed the
+  live joint-offset and IMU-trim page, which makes calibrating a duck much faster.
 - **Community fixes** integrated here: the antenna hardware-PWM jitter fix by **Brad3D**,
   and the pigpio/I2S coexistence by **Elpidiovaldez5**.
 - **AI co-development:** in the interest of full transparency — parts of this

@@ -256,6 +256,8 @@ input[type=range]::-moz-range-thumb{width:22px; height:22px; border:none; border
 .btn.treset{width:100%; min-height:38px; margin-top:8px; border-color:var(--line); color:var(--dim);
             letter-spacing:.1em; font-size:11px}
 .btn.treset:active{color:var(--amber); border-color:var(--amber)}
+.btn.tlink{width:100%; min-height:44px; margin-top:6px; border-color:var(--amber); color:var(--amber);
+           letter-spacing:.14em; font-size:12px; text-decoration:none}
 .btn.tb.reset{font-size:15px; min-width:42px; color:var(--dim); border-color:var(--line)}
 .btn.tb.reset:active{color:var(--amber); border-color:var(--amber)}
 .camwrap{position:relative; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:#000;
@@ -762,7 +764,10 @@ function renderTune(mode){
       html+= spec.type==="tgl"?toggleRow("walk",spec,!!v):sliderRow("walk",spec,v); });
     html+=`<div class="thint">Action scale ramps in smoothly (lower = steadier, higher = livelier). All edits are live; press Save to keep them across restarts.</div>
       <button class="btn treset" data-reset="walk">↺ RESET TO KNOWN-GOOD DEFAULTS</button>
-      <button class="btn tsave" data-save="walk">SAVE WALK TUNING TO DUCK</button></div>`+antennaSection(s);
+      <button class="btn tsave" data-save="walk">SAVE WALK TUNING TO DUCK</button></div>
+      <div class="tsec"><span class="lbl">Calibration</span>
+      <div class="thint">Duck leaning or walking crooked? Tune each joint's zero while it stands in front of you.</div>
+      <a class="btn tlink" href="/offsets">JOINT OFFSETS &amp; IMU TRIM</a></div>`+antennaSection(s);
   }
   body.innerHTML=html;
   wireTune();

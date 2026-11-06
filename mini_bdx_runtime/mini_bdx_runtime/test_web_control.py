@@ -3,9 +3,12 @@ Standalone tests for web_control.handle_api (pure routing; no sockets).
 
 Run:  python3 test_web_control.py
 """
+import http.client
 import json
 from control_bus import ControlBus
-from web_control import handle_api, captive_target, captive_probe_response
+from web_control import (
+    WebControlServer, handle_api, captive_target, captive_probe_response,
+)
 
 PORTAL = "http://10.42.0.1:8080/"
 
@@ -157,6 +160,87 @@ def test_unknown_api_404():
     bus = ControlBus()
     status, ct, body = handle_api("GET", "/api/nope", b"", bus, 0.0)
     assert status == 404
+
+
+# ---- non-finite numbers would otherwise reach the motors through the obs/targets ----
+def test_nan_and_infinity_are_rejected_on_every_route():
+    # json.loads accepts all of these by default; each one is a poisoned setpoint.
+    for literal in ("NaN", "Infinity", "-Infinity", "1e999"):
+        bus = ControlBus()
+        routes = {
+            "/api/trim": '{"axis":"pitch","delta":%s}',
+            "/api/command": '{"active":true,"l_x":%s}',
+            "/api/setting": '{"group":"walk","key":"action_scale","value":%s}',
+        }
+        for path, template in routes.items():
+            body = (template % literal).encode()
+            status, ct, resp = handle_api("POST", path, body, bus, 0.0)
+            assert status == 400, f"{path} accepted {literal}"
+            assert json.loads(resp)["ok"] is False
+        assert bus.consume_trim() == (0.0, 0.0, False)
+        assert bus.consume_settings() == ({}, set(), set())
+
+
+def test_json_that_is_not_an_object_is_a_400_not_a_crash():
+    bus = ControlBus()
+    for path in ("/api/command", "/api/button", "/api/trim", "/api/setting"):
+        for raw in (b"[1,2]", b"3", b'"x"', b"null"):
+            status, ct, resp = handle_api("POST", path, raw, bus, 0.0)
+            assert status == 400, f"{path} {raw!r}"
+
+
+def test_non_numeric_stick_value_is_a_400_not_a_crash():
+    bus = ControlBus()
+    status, ct, resp = handle_api("POST", "/api/command", b'{"l_x":"abc"}', bus, 0.0)
+    assert status == 400 and json.loads(resp)["ok"] is False
+
+
+# ---- joint-offset page ----
+def test_joint_offset_edit_save_and_revert_use_the_settings_channel():
+    bus = ControlBus()
+    for payload in ({"group": "joint_offsets", "key": "left_knee", "value": 0.12},
+                    {"group": "joint_offsets", "action": "save"},
+                    {"group": "joint_offsets", "action": "reset"},
+                    {"group": "stance", "key": "hold", "value": True}):
+        status, ct, resp = handle_api("POST", "/api/setting",
+                                      json.dumps(payload).encode(), bus, 0.0)
+        assert status == 200
+    settings, saves, resets = bus.consume_settings()
+    assert settings["joint_offsets"] == {"left_knee": 0.12}
+    assert settings["stance"] == {"hold": True}
+    assert saves == {"joint_offsets"} and resets == {"joint_offsets"}
+
+
+def test_offsets_page_is_an_app_route_not_a_captive_redirect():
+    for p in ("/offsets", "/offsets.html"):
+        assert captive_target(p, PORTAL) is None, p
+
+
+def test_server_serves_both_pages_and_still_answers_captive_probes():
+    server = WebControlServer(ControlBus(), host="127.0.0.1", port=0)
+    server.start()
+    try:
+        port = server._httpd.server_address[1]
+
+        def get(path):
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            conn.request("GET", path)
+            r = conn.getresponse()
+            body = r.read()
+            conn.close()
+            return r.status, r.getheader("Content-Type"), body
+
+        status, ctype, body = get("/offsets")
+        assert status == 200 and "text/html" in ctype
+        assert b"Joint offsets" in body
+        status, ctype, body = get("/")
+        assert status == 200 and b"Console" in body
+        status, ctype, body = get("/hotspot-detect.html")
+        assert status == 200 and b"Success" in body
+        status, ctype, body = get("/some/stray/url")
+        assert status == 302
+    finally:
+        server.stop()
 
 
 if __name__ == "__main__":

@@ -66,6 +66,32 @@ def test_save_config_fields_preserves_joint_offsets():
         os.remove(path)
 
 
+def test_a_failed_write_leaves_the_existing_config_intact():
+    # The config holds this duck's mechanical zero: a write that dies half way (power
+    # cut, full disk, unserialisable value) must never leave a truncated file behind.
+    c, path = _cfg({"joints_offsets": {"left_knee": 0.124}, "imu_upside_down": True})
+    before = open(path).read()
+    try:
+        save_config_fields({"bad": object()}, config_json_path=path, backup=False)
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("expected the unserialisable value to raise")
+    assert open(path).read() == before
+    leftovers = [f for f in os.listdir(os.path.dirname(path))
+                 if f.startswith(os.path.basename(path) + ".tmp")]
+    assert leftovers == []
+    os.unlink(path)
+
+
+def test_a_save_keeps_the_file_mode():
+    c, path = _cfg({"web_ui": True})
+    os.chmod(path, 0o640)
+    save_config_fields({"web_ui": False}, config_json_path=path, backup=False)
+    assert os.stat(path).st_mode & 0o777 == 0o640
+    os.unlink(path)
+
+
 def _run():
     fns = [v for k, v in sorted(globals().items())
            if k.startswith("test_") and callable(v)]
