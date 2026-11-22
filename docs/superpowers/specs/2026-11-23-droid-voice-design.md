@@ -172,7 +172,7 @@ fallback stays cheap.
 
 **Tests** (flat, no pytest, like the neighbouring `test_*.py`):
 same seed gives identical samples; different seeds differ; every mood and block
-renders without NaN or clipping; durations fall in sane bounds (0.2-4 s); each
+renders without NaN or clipping; durations fall in sane bounds (0.15-5 s; a slow `beatbox` runs about 4.5 s); each
 block has its energy where the recipe says (e.g. chatter: a peak near 845 Hz and
 a band at 3.4-4.4 kHz, near silence between 1.6 and 3 kHz); render speed meets
 the 50x budget; WAV header is mono/16-bit/44100.

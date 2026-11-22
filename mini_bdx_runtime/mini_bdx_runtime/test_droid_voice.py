@@ -4,6 +4,8 @@ Standalone tests for the droid_voice synthesizer (no pytest; numpy only -> runs 
 Run from this directory:  python3 test_droid_voice.py
 """
 import os
+import platform
+import sys
 import tempfile
 import time
 import wave
@@ -82,13 +84,21 @@ def test_sweep_stays_out_of_the_painful_range():
         assert mag[f > 2300].max() < mag.max() * 0.1   # -20 dB
 
 
-def test_chat_syllable_accent_changes_the_onset_only():
-    plain = blocks.chat_syl(_rng(2), 140, (845, 840), (3900, 3850))
-    acc = blocks.chat_syl(_rng(2), 140, (845, 840), (3900, 3850), accent=True)
+def test_chat_syllable_accent_opens_rougher_then_settles():
+    # An accent starts with faster, deeper flutter: its first 40 ms spread over a
+    # wider band than a plain syllable's, while the settled tail does not.
+    def spread(y):                       # bandwidth of the high whistle
+        f, mag = _spectrum(y)
+        keep = f > 2500
+        f, p = f[keep], mag[keep] ** 2
+        c = (f * p).sum() / p.sum()
+        return np.sqrt((((f - c) ** 2) * p).sum() / p.sum())
+    plain = blocks.chat_syl(_rng(2), 180, (845, 840), (3900, 3850))
+    acc = blocks.chat_syl(_rng(2), 180, (845, 840), (3900, 3850), accent=True)
     assert len(plain) == len(acc)
-    head, tail = slice(0, dsp.n(40)), slice(dsp.n(110), None)
-    assert np.abs(plain[head] - acc[head]).max() > 0.05
-    assert np.abs(plain[tail] - acc[tail]).max() < np.abs(plain[head] - acc[head]).max()
+    head, tail = slice(0, dsp.n(40)), slice(dsp.n(120), None)
+    assert spread(acc[head]) > spread(plain[head]) * 1.4
+    assert abs(spread(acc[tail]) - spread(plain[tail])) < spread(plain[tail]) * 0.05
 
 
 # ---- moods -----------------------------------------------------------------
@@ -105,8 +115,15 @@ def test_every_mood_is_safe_at_every_energy():
             for seed in range(5):
                 y = droid_voice.say(mood, seed, energy)
                 assert np.all(np.isfinite(y)), (mood, energy, seed)
-                assert np.abs(y).max() <= 0.72, (mood, energy, seed)
-                assert 0.2 <= len(y) / SR <= 6.0, (mood, energy, seed, len(y) / SR)
+                assert abs(np.abs(y).max() - render.PEAK) < 0.01, (mood, energy, seed)
+
+
+def test_every_mood_stays_a_sensible_length():
+    for mood in MOOD_NAMES:
+        for energy in (0.0, 0.5, 1.0):
+            for seed in range(120):
+                secs = len(droid_voice.say(mood, seed, energy)) / SR
+                assert 0.15 <= secs <= 5.0, (mood, energy, seed, secs)
 
 
 def test_say_is_deterministic_and_seeds_differ():
@@ -171,11 +188,25 @@ def test_yes_rises_and_no_falls():
             assert sign * (second - first) > 0, (mood, seed, first, second)
 
 
-def test_neutral_energy_does_not_transpose():
-    # energy 0.5 must leave the approved bell pitch exactly where it was tuned
-    y = droid_voice.block("bell", 1)
-    f, mag = _spectrum(y)
-    assert abs(f[np.argmax(mag)] - 2075) / 2075 < 0.03
+def test_neutral_energy_does_not_transpose_and_extremes_do():
+    for mood in MOOD_NAMES:
+        raw = phrases.MOODS[mood](_rng(3), 0.5)
+        assert np.array_equal(droid_voice.say(mood, 3, 0.5), render.finish(raw)), mood
+    tone_ = dsp.tone([(0, 1000.0), (1, 1000.0)], 300)
+    up, down = render.transpose(tone_, 1.5), render.transpose(tone_, -1.5)
+    assert abs(_peak_hz(up) / 1000.0 - 2 ** (1.5 / 12)) < 0.01
+    assert abs(_peak_hz(down) / 1000.0 - 2 ** (-1.5 / 12)) < 0.01
+
+
+def test_energy_accepts_numeric_strings_and_survives_nan():
+    assert np.array_equal(droid_voice.say("yes", 1, "0.5"), droid_voice.say("yes", 1, 0.5))
+    assert np.array_equal(droid_voice.say("yes", 1, float("nan")), droid_voice.say("yes", 1, 0.5))
+
+
+def test_two_note_glide_run_still_climbs():
+    y = blocks.glide_run(_rng(1), 2)
+    half = len(y) // 2
+    assert _peak_hz(y[:half]) < _peak_hz(y[half:])
 
 
 # ---- rendering -------------------------------------------------------------
@@ -202,6 +233,10 @@ def test_wav_is_mono_16bit_44100():
 
 
 def test_render_is_at_least_50x_real_time():
+    # A laptop budget. On the robot use `tools/droid_voice/droid_voice.py --bench` instead.
+    if platform.machine().lower().startswith(("arm", "aarch")) and sys.platform != "darwin":
+        print("    (skipped on ARM Linux)")
+        return
     droid_voice.say("happy", 0)  # warm-up
     audio = 0.0
     t0 = time.perf_counter()

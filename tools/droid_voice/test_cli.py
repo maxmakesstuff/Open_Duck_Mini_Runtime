@@ -87,6 +87,30 @@ def test_energy_out_of_range_is_clamped():
             assert w.getnframes() / w.getframerate() < 6.0
 
 
+def test_file_name_reproduces_the_file_even_for_odd_energies():
+    with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+        run("--mood", "yes", "--seed", "1", "--energy", "0.504", "--out", a)
+        run("--mood", "yes", "--seed", "1", "--energy", "0.5", "--out", b)
+        name = "yes_e050_s1.wav"
+        assert open(os.path.join(a, name), "rb").read() == open(os.path.join(b, name), "rb").read()
+
+
+def test_bad_numbers_are_clean_errors():
+    with tempfile.TemporaryDirectory() as d:
+        for args in (("--mood", "yes", "--seed", "-1"), ("--mood", "yes", "--count", "2000000"),
+                     ("--mood", "yes", "--count", "0"), ("--mood", "yes", "--energy", "nan"),
+                     ("--mood", "yes", "--block", "bell"), ("--all", "--mood", "yes")):
+            r = run(*args, "--out", d)
+            assert r.returncode == 2 and "Traceback" not in r.stderr, (args, r.stderr)
+        assert wavs(d) == []
+
+
+def test_out_pointing_at_a_file_is_a_clean_error():
+    with tempfile.NamedTemporaryFile() as f:
+        r = run("--mood", "yes", "--out", f.name)
+        assert r.returncode == 2 and "Traceback" not in r.stderr, r.stderr
+
+
 def test_play_without_a_player_still_writes_the_file():
     with tempfile.TemporaryDirectory() as d:
         env = dict(os.environ, PATH="/nonexistent")

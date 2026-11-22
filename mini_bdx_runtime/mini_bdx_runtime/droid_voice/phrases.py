@@ -61,7 +61,7 @@ def excited(rng, energy):
 
 
 def sad(rng, energy):
-    t = _tempo(energy) * 0.9
+    t = _tempo(energy)
     j = rng.uniform(0.94, 1.06)
     parts = [tone([(0.0, 900 * j), (0.3, 950 * j), (1.0, 520 * j)], rng.uniform(470, 560) / t, 1.0,
                   h=(1.0, 0.1), r=120.0, vib=0.012),
@@ -89,7 +89,7 @@ def beatbox(rng, energy):
 def alert(rng, energy):
     t = _tempo(energy)
     if rng.random() < 0.5:
-        one = lambda: B.chirp(rng, ms=100.0)
+        one = lambda: B.chirp(rng, ms=100.0 / t)
     else:
         j = rng.uniform(0.95, 1.05)
         one = lambda: tone([(0.0, 1200 * j), (0.7, 2000 * j), (1.0, 2100 * j)], 120.0 / t, 0.8, a=5.0, r=30.0)

@@ -56,6 +56,9 @@ def _write(out_dir, name, audio, play):
         _play(path)
 
 
+MAX_COUNT = 1000
+
+
 def _seeds(first, count):
     """`count` distinct seeds: counting up from `first`, or fresh random ones."""
     if first is not None:
@@ -83,10 +86,10 @@ def main(argv=None):
                                  epilog="Moods: " + ", ".join(dv.MOODS) + ". Blocks: " + ", ".join(dv.BLOCKS) + ".")
     ap.add_argument("--mood", help="render whole utterances in this mood")
     ap.add_argument("--block", help="render one building block on its own")
-    ap.add_argument("--all", action="store_true", help=f"starter set: {STARTER_PER_MOOD} of every mood + every block")
+    ap.add_argument("--all", action="store_true", help=f"starter set: {STARTER_PER_MOOD} of every mood + every block (seeds 1.. unless --seed; ignores --count)")
     ap.add_argument("--count", type=int, default=1, help="how many utterances (default 1)")
     ap.add_argument("--seed", type=int, default=None, help="first seed (default: random; shown in the file name)")
-    ap.add_argument("--energy", type=float, default=0.5, help="0 calm .. 1 lively (default 0.5 = neutral)")
+    ap.add_argument("--energy", type=float, default=0.5, help="0 calm .. 1 lively (default 0.5 = neutral; moods only)")
     ap.add_argument("--out", default=DEFAULT_OUT, help="output folder (default: tools/droid_voice/out)")
     ap.add_argument("--play", action="store_true", help="play each sound after writing it")
     ap.add_argument("--list", action="store_true", help="list moods and blocks")
@@ -106,20 +109,30 @@ def main(argv=None):
         _fail(f"unknown mood '{a.mood}' - choose one of: {', '.join(dv.MOODS)}")
     if a.block and a.block not in dv.BLOCKS:
         _fail(f"unknown block '{a.block}' - choose one of: {', '.join(dv.BLOCKS)}")
-    if a.count < 1:
-        _fail("--count must be at least 1")
+    if sum(bool(x) for x in (a.mood, a.block, a.all)) > 1:
+        _fail("give only one of --mood, --block, --all")
+    if not 1 <= a.count <= MAX_COUNT:
+        _fail(f"--count must be between 1 and {MAX_COUNT}")
+    if a.seed is not None and a.seed < 0:
+        _fail("--seed must be 0 or greater")
+    if a.energy != a.energy:
+        _fail("--energy must be a number between 0 and 1")
 
-    energy = min(1.0, max(0.0, a.energy))
+    # Quantise to the two digits the file name carries, so the name reproduces the file.
+    energy = round(min(1.0, max(0.0, a.energy)) * 100) / 100
     tag = f"e{round(energy * 100):03d}"
-    os.makedirs(a.out, exist_ok=True)
+    try:
+        os.makedirs(a.out, exist_ok=True)
+    except OSError as e:
+        _fail(f"cannot use output folder '{a.out}': {e.strerror}")
 
-    if a.all:
+    if a.all:       # fixed seeds (1.. unless --seed) so the starter set is the same every time
+        first = a.seed if a.seed is not None else 1
         for mood in dv.MOODS:
-            for seed in _seeds(a.seed if a.seed is not None else 1, STARTER_PER_MOOD):
+            for seed in _seeds(first, STARTER_PER_MOOD):
                 _write(a.out, f"{mood}_{tag}_s{seed}.wav", dv.say(mood, seed, energy), a.play)
         for name in dv.BLOCKS:
-            seed = a.seed if a.seed is not None else 1
-            _write(a.out, f"block_{name}_s{seed}.wav", dv.block(name, seed), a.play)
+            _write(a.out, f"block_{name}_s{first}.wav", dv.block(name, first), a.play)
     if a.mood:
         for seed in _seeds(a.seed, a.count):
             _write(a.out, f"{a.mood}_{tag}_s{seed}.wav", dv.say(a.mood, seed, energy), a.play)

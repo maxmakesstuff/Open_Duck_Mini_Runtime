@@ -93,7 +93,7 @@ def glide_run(rng, n_syl=6, tempo=1.0):
             pts = [(0.0, f0), (0.45, f0 * 0.99), (1.0, f0 * rng.uniform(0.78, 0.84))]
             ms, amp, rel = rng.uniform(85, 110), 0.9, 45.0
         else:
-            f0 = start * (top / start) ** (i / (n_syl - 2.0) if n_syl > 2 else 1.0) * _jit(rng, 2)
+            f0 = start * (top / start) ** (i / max(n_syl - 2.0, 1.0)) * _jit(rng, 2)
             if i < n_syl - 2 and rng.random() < 0.45:      # scoop up at the end
                 pts = [(0.0, f0), (0.55, f0 * 1.01), (1.0, f0 * rng.uniform(1.12, 1.3))]
             else:
@@ -201,7 +201,7 @@ def bell_call(rng, calls=2):
     for i in range(max(1, int(calls))):
         out += [bell(rng, 2290 * j, rng.uniform(62, 74), 0.6 + 0.1 * i, bend=rng.uniform(0.045, 0.06)),
                 sil(rng.uniform(90, 110)),
-                bell(rng, 2075 * j, rng.uniform(300, 365), 0.9 + 0.1 * i),
+                bell(rng, 2075 * j, rng.uniform(335, 365), 0.9 + 0.1 * i),
                 sil(rng.uniform(100, 125))]
     return cat(*out[:-1])
 

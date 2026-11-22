@@ -33,7 +33,8 @@ def say(mood, seed=None, energy=0.5):
     """Render one utterance. `energy` (0..1, clamped) makes it livelier or calmer;
     0.5 is the neutral voice. `seed=None` picks a fresh random utterance."""
     fn = _lookup(MOODS, mood, "mood")
-    energy = float(min(1.0, max(0.0, energy)))
+    energy = float(energy)
+    energy = 0.5 if energy != energy else min(1.0, max(0.0, energy))   # NaN -> neutral
     y = fn(np.random.default_rng(seed), energy)
     y = transpose(y, (energy - 0.5) * 2.0 * MAX_TRANSPOSE_SEMITONES)
     return finish(y)

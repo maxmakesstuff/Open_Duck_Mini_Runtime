@@ -20,7 +20,9 @@ python3 droid_voice.py --list
 
 Files land in `tools/droid_voice/out/` (git-ignored) unless you pass `--out`.
 The name says how to make the file again: `happy_e050_s3.wav` is
-`--mood happy --energy 0.5 --seed 3`. Without `--seed` you get random seeds.
+`--mood happy --energy 0.5 --seed 3`. Without `--seed` you get random seeds
+(`--all` always starts at seed 1, so the starter set is the same every time).
+Energy is rounded to two decimals; it applies to moods, not to single blocks.
 
 ## Moods
 
