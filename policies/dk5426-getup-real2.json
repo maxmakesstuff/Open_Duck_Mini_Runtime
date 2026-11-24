@@ -1,0 +1,12 @@
+{
+  "id": "dk5426-getup-real2",
+  "name": "dk5426 get-up (real2, 80M)",
+  "kind": "getup",
+  "file": "dk5426_getup_real2_80M.onnx",
+  "obs_size": 92,
+  "action_size": 14,
+  "sha256": "7e6b875252c99460a7dc492f96c5bd1f0777ecd8c0349a07fde990ee1891ad83",
+  "source": "https://github.com/dk5426/open-duck-curation (policies/getup_real2_80M.onnx, commit 20639cf)",
+  "license": "Apache-2.0",
+  "summary": "Stands up from lying face-down. The file shown standing up a real duck on Discord (2026-11-23)."
+}

@@ -76,6 +76,9 @@ class HWI:
 
         self.usb_port = usb_port
         self.io = rustypot.feetech(usb_port, 1000000)
+        # Last per-servo bus voltage (V) by joint name, filled by read_battery_handoff.
+        # A servo far below the others points at a weak cable or connector on its leg.
+        self.servo_voltages = {}
 
     def set_kps(self, kps):
         self.kps = kps
@@ -209,6 +212,10 @@ class HWI:
                 vv = pio.get_present_voltage(ids)
                 if vv:
                     voltage = round(sum(vv) / len(vv) * self.VOLTAGE_SCALE, 2)
+                    if len(vv) == len(ids):
+                        self.servo_voltages = {
+                            joint: round(float(v) * self.VOLTAGE_SCALE, 2)
+                            for joint, v in zip(self.joints.keys(), vv)}
                 try:
                     tt = pio.get_present_temperature(ids)
                     if tt:

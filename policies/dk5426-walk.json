@@ -1,0 +1,13 @@
+{
+  "id": "dk5426-walk",
+  "name": "dk5426 walker",
+  "kind": "walk",
+  "file": "dk5426_walker_258M.onnx",
+  "obs_size": 101,
+  "action_size": 14,
+  "sha256": "31328ec8a4305e2dd4754d0702fa3058a370876adc52cc323d1fa5174daabe02",
+  "source": "https://github.com/dk5426/open-duck-curation (policies/ours_walker_full300M_258M.onnx, commit 20639cf)",
+  "license": "Apache-2.0",
+  "summary": "Retrained walk. Tracks stick commands more closely in the authors' simulation and has run on their real duck.",
+  "defaults": {"action_scale": 0.25, "phase_frequency_factor_offset": 0.0}
+}

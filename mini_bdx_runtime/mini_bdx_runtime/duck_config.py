@@ -104,6 +104,19 @@ class DuckConfig:
             "phase_frequency_factor_offset", 0.0
         )
 
+        # --- stability suite (each dict is validated by the module that owns it) ---
+        # Which policy to run and what the user tuned per policy (policy_slots.py).
+        self.policies = self.json_config.get("policies", {})
+        # Early fall detection + soft landing (fall_reflex.py). Missing -> "observe":
+        # it detects and logs but changes nothing about the motion.
+        self.fall_reflex = self.json_config.get("fall_reflex", {})
+        # Get-up policy runtime (getup.py). Missing -> disabled.
+        self.getup = self.json_config.get("getup", {})
+        # Black-box recorder (flight_recorder.py). Missing -> on.
+        self.flight_recorder = self.json_config.get("flight_recorder", {})
+        # Drive-command ramp (command_shaper.py). Missing -> off.
+        self.command_slew = self.json_config.get("command_slew", {})
+
         # Phone Web UI (on by default; set "web_ui": false to disable). Served on
         # web_port; battery mapping is per-pack (2S LiPo defaults).
         self.web_ui = self.json_config.get("web_ui", True)

@@ -31,6 +31,15 @@ _FALLBACK_HTML = (
 )
 
 
+try:  # recordings need numpy; the server itself must start without it
+    from mini_bdx_runtime import flight_recorder as _flight
+except ImportError:
+    try:
+        import flight_recorder as _flight
+    except ImportError:
+        _flight = None
+
+
 def _json_bytes(obj):
     return json.dumps(obj, separators=(",", ":")).encode("utf-8")
 
@@ -66,6 +75,10 @@ def handle_api(method, path, body_bytes, bus, now):
 
     if method == "GET" and path == "/api/state":
         return 200, "application/json", _json_bytes(bus.get_telemetry())
+
+    if method == "GET" and path == "/api/logs":
+        logs = _flight.list_logs() if _flight is not None else []
+        return 200, "application/json", _json_bytes({"logs": logs})
 
     if method == "POST" and path in _POST_ROUTES:
         try:
@@ -251,6 +264,23 @@ def _make_handler(bus, clock, portal_url, camera_provider=None):
                     self._send(200, "image/jpeg", jpeg)
                 else:
                     self._send(503, "text/plain", b"camera unavailable")
+                return
+            # One black-box recording, as a download (so logs can be pulled off the
+            # duck from the phone or a laptop browser, without scp).
+            if path.startswith("/api/logs/"):
+                name = path[len("/api/logs/"):]
+                full = _flight.log_path(name) if _flight is not None else None
+                if full is None:
+                    self._send(404, "text/plain", b"no such recording")
+                    return
+                try:
+                    with open(full, "rb") as f:
+                        data = f.read()
+                except OSError:
+                    self._send(404, "text/plain", b"no such recording")
+                    return
+                self._send(200, "application/octet-stream", data, extra={
+                    "Content-Disposition": f'attachment; filename="{name}"'})
                 return
             if path.startswith("/api/"):
                 r = handle_api("GET", path, b"", bus, clock())

@@ -20,6 +20,10 @@ WALK_TUNING_DEFAULTS = {
         "rate_lo": 2.5, "rate_hi": 7.0,
         "floor": 0.35, "smooth": 0.3,
     },
+    # Drive-command ramp: a slammed stick becomes a short ramp (command_shaper.py).
+    # Stays off here until it has been walked on a real duck; turn it on in TUNE.
+    "command_slew": {"enabled": False, "lin_accel": 0.3, "ang_accel": 4.0,
+                     "stop_factor": 3.0},
 }
 
 # "Reset" target for the IMU mounting trim: neutral (no trim). The per-duck mount

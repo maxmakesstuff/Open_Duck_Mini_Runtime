@@ -84,10 +84,12 @@ def build_state(mode, paused, battery, loop_hz, temp_c, fallen,
                 features, flags, sounds, uptime_s,
                 imu=None, gait_offset=0.0, message="", imu_trim=None,
                 governor=None, walk_params=None, camera=None,
-                antenna_anim=None, antenna_sync=None, joint_offsets=None):
-    """Assemble the /api/state dict. Pure -> unit-tested off-robot."""
+                antenna_anim=None, antenna_sync=None, joint_offsets=None, extra=None):
+    """Assemble the /api/state dict. Pure -> unit-tested off-robot. `extra` adds
+    further top-level entries (the stability suite's) without overriding any of the
+    base ones."""
     seconds = round(recording_frames / control_hz, 2) if control_hz else 0.0
-    return {
+    state = {
         "mode": mode,
         "paused": bool(paused),
         "battery": dict(battery),
@@ -114,3 +116,6 @@ def build_state(mode, paused, battery, loop_hz, temp_c, fallen,
         "uptime_s": round(float(uptime_s), 1),
         "message": message,
     }
+    for key, value in (extra or {}).items():
+        state.setdefault(key, value)
+    return state

@@ -1,0 +1,12 @@
+{
+  "id": "dk5426-getup-real",
+  "name": "dk5426 get-up (real, 41M)",
+  "kind": "getup",
+  "file": "dk5426_getup_real_41M.onnx",
+  "obs_size": 92,
+  "action_size": 14,
+  "sha256": "145f35ac6c039481fa57898516716737e932ccdf1cf452f98f5055c7970c5d6b",
+  "source": "https://github.com/dk5426/open-duck-curation (policies/getup_real_41M.onnx, commit 20639cf)",
+  "license": "Apache-2.0",
+  "summary": "Earlier get-up. Stood up 2 of 8 times in the authors' own robot logs, before their runtime fixes."
+}

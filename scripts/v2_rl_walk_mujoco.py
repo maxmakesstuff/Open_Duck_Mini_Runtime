@@ -23,6 +23,16 @@ from mini_bdx_runtime.stability_governor import (
 from mini_bdx_runtime.antenna_anim import AntennaAnimator
 from mini_bdx_runtime.walk_defaults import WALK_TUNING_DEFAULTS, IMU_TRIM_DEFAULTS
 from mini_bdx_runtime.offset_tuner import OffsetTuner
+from mini_bdx_runtime import policy_slots
+from mini_bdx_runtime.fall_reflex import FallReflex, TiltEstimator, tuck_pose
+from mini_bdx_runtime import fall_reflex as fall_reflex_mod
+from mini_bdx_runtime import getup as getup_mod
+from mini_bdx_runtime.getup import GetUpController, JOINT_LO, JOINT_HI
+from mini_bdx_runtime.flight_recorder import (
+    FlightRecorder, MODE_CODES, REFLEX_CODES,
+)
+from mini_bdx_runtime.command_shaper import CommandShaper
+from mini_bdx_runtime.loop_health import LoopHealth
 # Optional: Web UI + scanner sound. The walk still runs if these are absent.
 try:
     from mini_bdx_runtime.control_bus import ControlBus
@@ -38,8 +48,22 @@ except ImportError:
 import math
 import os
 import random
+import threading
+from collections import deque
 
 HOME_DIR = os.path.expanduser("~")
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Policy switch while walking: stand in place this long (zero command), then fade the
+# old policy's amplitude out, swap at zero amplitude and fade the new one in. The
+# stance pose is what "zero amplitude" means, so there is no step at the swap.
+SWITCH_SETTLE_S = 0.6
+# Joint speed (rad/s) for scripted moves the policy does not drive: the tuck of the
+# fall reflex (as fast as the servos go) and the glide back to stance afterwards.
+REFLEX_TUCK_SPEED = 5.24
+RECOVER_SPEED = 1.0
+# After a soft landing, Resume only works once the duck is this upright again.
+RECOVER_MAX_TILT_DEG = 25.0
 
 # action_scale is ramped toward a web-set target so a live change can't step the
 # leg amplitude in one tick (motor safety). Max change per control tick:
@@ -125,7 +149,7 @@ class RLWalk:
         self.pitch_bias = pitch_bias
 
         self.onnx_model_path = onnx_model_path
-        self.policy = OnnxInfer(self.onnx_model_path, awd=True)
+        self._init_policies()
 
         self.num_dofs = 14
         self.max_motor_velocity = self.duck_config.max_motor_velocity_rad_s  # rad/s
@@ -184,6 +208,7 @@ class RLWalk:
         # Live-tunable target the loop ramps `action_scale` toward (Web UI edits it).
         self._action_scale_target = self.action_scale
         print(f"action_scale = {self.action_scale}")
+        self._cli_action_scale = action_scale is not None
 
         # Per-tick slew clamp: mirror the config flag into a live-tunable attr so the
         # Web UI can flip it without a restart (the loop reads self.velocity_clip).
@@ -227,6 +252,13 @@ class RLWalk:
         self.phase_frequency_factor_offset = (
             self.duck_config.phase_frequency_factor_offset
         )
+        # Values the STOCK policy runs with; another slot may carry its own.
+        self._stock_tuning = {
+            "action_scale": float(self._action_scale_target),
+            "phase_frequency_factor_offset": float(self.phase_frequency_factor_offset),
+        }
+        if self.policy_manager.active_id != policy_slots.STOCK_ID:
+            self._apply_slot_tuning(self.policy_manager.active_id, ramp=False)
 
         # Optional expression features
         if self.duck_config.eyes:
@@ -253,6 +285,7 @@ class RLWalk:
         self._record_stop_armed = False
 
         self.fall_detector = FallDetector()
+        self._init_stability_suite()
         # Tilt-based stability governor (disabled unless duck_config enables it).
         self.governor = governor_from_config(self.duck_config.stability_governor)
         self._gov_scale = 1.0
@@ -298,6 +331,566 @@ class RLWalk:
             except Exception as e:  # noqa: BLE001
                 print(f"[walk] web UI unavailable: {e}")
                 self.web_server = None
+
+    # ============================================================ stability suite ====
+    # Policy slots, fall reflex, get-up, black-box recorder. Each piece is a pure
+    # module in mini_bdx_runtime/ (unit-tested off-robot); the methods below only
+    # connect them to the servos and to the Web UI.
+    def _init_policies(self):
+        """Find the selectable policies and load the one this duck last ran. Falls
+        back to the start-up (--onnx_model_path) policy if that fails."""
+        def loader(path):
+            return OnnxInfer(path, awd=True)
+
+        cfg = self.duck_config.policies if isinstance(self.duck_config.policies, dict) else {}
+        slots = policy_slots.discover(
+            policy_slots.default_folders(REPO_ROOT, HOME_DIR), self.onnx_model_path)
+        self._policy_loader = loader
+        self.policy_manager = policy_slots.PolicyManager(
+            slots, loader, tuning=cfg.get("tuning"))
+        self.policy = None
+        self._session_tuning = {}
+        want = str(cfg.get("active", policy_slots.STOCK_ID))
+        if want != policy_slots.STOCK_ID:
+            slot = slots.get(want)
+            if slot is None or slot.kind != "walk":
+                print(f"[policy] saved choice '{want}' not found; using the stock walk")
+            else:
+                policy, problem = policy_slots.load_slot(slot, loader)
+                if policy is None:
+                    print(f"[policy] {slot.name}: {problem}; using the stock walk")
+                    self.policy_manager.message = f"{slot.name}: {problem}"
+                else:
+                    self.policy = policy
+                    self.policy_manager.active_id = slot.id
+        if self.policy is None:
+            self.policy = loader(self.onnx_model_path)
+            self.policy_manager.active_id = policy_slots.STOCK_ID
+        print(f"[policy] running: {slots[self.policy_manager.active_id].name}  "
+              f"({len(self.policy_manager.walk_slots())} walk / "
+              f"{len(self.policy_manager.getup_slots())} get-up slots found)")
+
+    def _init_stability_suite(self):
+        self.tilt = TiltEstimator()
+        self.reflex = FallReflex(self.duck_config.fall_reflex)
+        self._tuck_pose = np.array(tuck_pose(self.init_pos, JOINT_LO, JOINT_HI))
+        self.getup_cfg = getup_mod.clean_config(self.duck_config.getup)
+        self.getup = None                 # GetUpController of the current attempt
+        self._getup_policy = None
+        self._getup_policy_id = None
+        self._getup_note = ""
+        self._getup_attempts = 0
+        self._getup_take = False
+        self.shaper = CommandShaper(self.duck_config.command_slew)
+        self.loop_health = LoopHealth(self.control_freq)
+        self.blackbox = FlightRecorder(
+            self.control_freq, self.duck_config.flight_recorder,
+            meta={"policy": self.policy_manager.active_id,
+                  "joints": list(self.hwi.joints.keys()),
+                  "init_pos": [float(v) for v in self.init_pos],
+                  "kp": list(getattr(self, "_kps_full", []))})
+        # What the loop is doing besides plain walking / being paused:
+        # None | "reflex" | "recover" | "getup" | "balance" | "switch"
+        self._activity = None
+        self._soft = False                # servo stiffness currently lowered
+        self._balance_until = 0.0
+        self._switch_until = 0.0
+        self._acc_window = deque(maxlen=50)
+        self._prev_tick_active = False
+        self._notice = ""
+        self._notice_until = 0.0
+        self._save_lock = threading.Lock()
+        if self.getup_cfg["enabled"]:
+            self._load_getup_policy()
+
+    def _notify(self, text, seconds=5.0):
+        """One line for the operator: printed, and shown in the Web UI for a while."""
+        print(f"[duck] {text}")
+        self._notice = str(text)
+        self._notice_until = time.time() + seconds
+
+    def _save_async(self, fields):
+        """Persist config fields off the control thread (an SD-card fsync can take
+        longer than a control tick). Backup-first, other keys untouched."""
+        def work():
+            from mini_bdx_runtime.duck_config import save_config_fields
+            with self._save_lock:
+                try:
+                    save_config_fields(fields)
+                except Exception as e:  # noqa: BLE001
+                    print(f"[duck] could not save {list(fields)}: {e}")
+        threading.Thread(target=work, daemon=True).start()
+
+    def _sense(self, now):
+        """Read the IMU once per tick and keep the tilt estimate current (also while
+        paused, so the horizon, the reflex and the get-up all see the same data)."""
+        imu = self.imu.get_data()
+        self._last_imu = imu
+        dt = self._tick_dt if 0.0 < self._tick_dt < 0.2 else 1.0 / self.control_freq
+        try:
+            self.tilt.update(imu["gyro"], imu["accelero"], dt)
+            self._acc_window.append(tuple(float(v) for v in imu["accelero"]))
+        except (KeyError, TypeError, ValueError):
+            pass
+
+    def _read_joints(self):
+        pos = self.hwi.get_present_positions(ignore=["left_antenna", "right_antenna"])
+        vel = self.hwi.get_present_velocities(ignore=["left_antenna", "right_antenna"])
+        if (pos is None or vel is None or len(pos) != self.num_dofs
+                or len(vel) != self.num_dofs):
+            self.loop_health.note_read_failure()
+            return None, None
+        return np.array(pos, dtype=float), np.array(vel, dtype=float)
+
+    def _write_targets(self, targets):
+        self.motor_targets = np.array(targets, dtype=float)
+        self.prev_motor_targets = self.motor_targets.copy()
+        self.hwi.set_position_all(
+            make_action_dict(self.motor_targets, list(self.hwi.joints.keys())))
+
+    def _reset_policy_state(self):
+        """Give the walk policy the clean start of a fresh boot."""
+        self.last_action = np.zeros(self.num_dofs)
+        self.last_last_action = np.zeros(self.num_dofs)
+        self.last_last_last_action = np.zeros(self.num_dofs)
+        self.imitation_i = 0
+        self.imitation_phase = np.array([1.0, 0.0])
+        self.motor_targets = np.array(self.init_pos, dtype=float)
+        self.prev_motor_targets = self.motor_targets.copy()
+        self.shaper.reset()
+
+    def _end_tick(self, t):
+        self._prev_tick_active = True
+        took = time.time() - t
+        time.sleep(max(0, 1 / self.control_freq - took))
+
+    def _mode_name(self):
+        if self._activity:
+            return self._activity
+        if self.paused:
+            return "stance" if self.offset_tuner.holding else "paused"
+        return "walk"
+
+    def _rec_tick(self, t, pos=None, vel=None, action=None, took=0.0):
+        imu = self._last_imu or {}
+        self.blackbox.add(
+            t=t - self._start_t, dt=self._tick_dt, gyro=imu.get("gyro"),
+            acc=imu.get("accelero"), commands=self.last_commands, pos=pos, vel=vel,
+            action=action, targets=self.motor_targets,
+            feet=self.feet_contacts.get(), tilt=self.tilt.tilt_deg,
+            tilt_rate=self.tilt.rate_deg_s, predicted=self.reflex.predicted_deg,
+            gov_scale=self._gov_scale, mode=MODE_CODES.get(self._mode_name(), 0),
+            reflex=REFLEX_CODES.get(self.reflex.phase, 0), took=took)
+
+    # ---------------------------------------------------------- policy switch ----
+    def _live_tuning(self):
+        return {"action_scale": float(self._action_scale_target),
+                "phase_frequency_factor_offset": float(self.phase_frequency_factor_offset)}
+
+    def _apply_slot_tuning(self, slot_id, ramp=True):
+        """Load the values a slot runs with: this session's edits, else what was
+        saved for it, else its own defaults, else the stock values."""
+        if slot_id in self._session_tuning:
+            t = self._session_tuning[slot_id]
+        elif slot_id == policy_slots.STOCK_ID:
+            t = self._stock_tuning
+        else:
+            t = self.policy_manager.tuning_for(slot_id, fallback=self._stock_tuning)
+        if "action_scale" in t and not self._cli_action_scale:
+            self._action_scale_target = float(t["action_scale"])
+            if not ramp:
+                self.action_scale = self._action_scale_target
+        if "phase_frequency_factor_offset" in t:
+            self.phase_frequency_factor_offset = float(t["phase_frequency_factor_offset"])
+
+    def _service_policy_switch(self, now):
+        """A requested policy loads on a background thread; once it is ready, swap it
+        in at a standstill: at once if paused, else after standing still for a
+        moment. Never mid-stride, never during a reflex or a get-up."""
+        if not self.policy_manager.ready() or self._activity is not None:
+            return
+        if self.paused:
+            self._swap_policy(now)
+        else:
+            self._activity = "switch"
+            self._switch_until = now + SWITCH_SETTLE_S
+            if self.recorder.state == "playing":
+                self.recorder.state = "idle"
+
+    def _swap_policy(self, now):
+        old_id = self.policy_manager.active_id
+        taken = self.policy_manager.take()
+        if taken is None:
+            return
+        slot, policy = taken
+        self._session_tuning[old_id] = self._live_tuning()
+        self.policy = policy
+        self._reset_policy_state()
+        self._apply_slot_tuning(slot.id)
+        if not self.paused:
+            self.action_scale = 0.0       # the new policy's amplitude fades in
+        self.blackbox.meta["policy"] = slot.id
+        self.blackbox.mark("switch", slot.id)
+        self._save_async({"policies": self.policy_manager.config_fields()})
+        self._notify(f"Now running: {slot.name}")
+
+    # ------------------------------------------------------------ fall reflex ----
+    def _update_reflex(self, now, enabled=True):
+        gyro = (self._last_imu or {}).get("gyro")
+        try:
+            gyro_mag = float(np.linalg.norm(gyro))
+        except (TypeError, ValueError):
+            gyro_mag = 0.0
+        return self.reflex.update(self.tilt.tilt_deg, self.tilt.rate_deg_s, gyro_mag,
+                                  now, enabled=enabled)
+
+    def _go_soft(self):
+        """Lower the servo stiffness so the joints give way instead of fighting."""
+        c = self.reflex.cfg
+        kps = [float(c["soft_kp"])] * self.num_dofs
+        kps[5:9] = [float(c["soft_kp_head"])] * 4
+        try:
+            self.hwi.set_kps(kps)
+            self._soft = True
+        except Exception as e:  # noqa: BLE001
+            print(f"[reflex] could not lower the stiffness: {e}")
+
+    def _stiffen(self):
+        try:
+            self.hwi.set_kps(list(self._kps_full))
+            self._soft = False
+            return True
+        except Exception as e:  # noqa: BLE001
+            print(f"[reflex] could not restore the stiffness: {e}")
+            return False
+
+    def _begin_reflex(self, now, event):
+        self._activity = "reflex"
+        if self.recorder.state == "playing":
+            self.recorder.state = "idle"
+        lt = self.reflex.last_trigger or {}
+        self.blackbox.mark("reflex", f"tilt {lt.get('tilt')} predicted {lt.get('predicted')}")
+        print(f"⚠ FALLING (tilt {lt.get('tilt')}°, predicted {lt.get('predicted')}°)"
+              " — soft landing")
+        if event == "trigger_soft":
+            self._go_soft()
+
+    def _reflex_tick(self, now):
+        event = self._update_reflex(now)
+        if self.reflex.phase == "tuck":
+            step = REFLEX_TUCK_SPEED / self.control_freq
+            self._write_targets(np.clip(self._tuck_pose, self.motor_targets - step,
+                                        self.motor_targets + step))
+        if event == "soft":
+            self._go_soft()
+        self._rec_tick(now)
+        if self.reflex.phase == "down":
+            self._activity = None
+            self.paused = True
+            self.fall_detector.fallen = True
+            self._notify("Down. Stand the duck up and press A, or use GET UP.", 30.0)
+            if self.duck_config.speaker:
+                try:
+                    self.sounds.play("beep2.wav")
+                except Exception:  # noqa: BLE001
+                    pass
+            self._maybe_auto_getup(now)
+
+    def _begin_recover(self, now):
+        """After a soft landing: stiffen up where the joints are, then glide to the
+        stance pose. Only once the duck has been stood upright again."""
+        if self.tilt.tilt_deg > RECOVER_MAX_TILT_DEG:
+            self._notify("Stand the duck upright first (or use GET UP).")
+            return False
+        pos, _ = self._read_joints()
+        if pos is None:
+            self._notify("Cannot read the joints; try again.")
+            return False
+        self._write_targets(np.clip(pos, JOINT_LO, JOINT_HI))   # goal = where it is
+        if not self._stiffen():
+            return False
+        self._activity = "recover"
+        self.paused = False
+        return True
+
+    def _recover_tick(self, now):
+        step = RECOVER_SPEED / self.control_freq
+        home = np.array(self.init_pos, dtype=float)
+        self._write_targets(np.clip(home, self.motor_targets - step,
+                                    self.motor_targets + step))
+        self._rec_tick(now)
+        if float(np.max(np.abs(self.motor_targets - home))) < 1e-6:
+            self._reset_policy_state()
+            self.action_scale = 0.0
+            self._activity = None
+            self.fall_detector.reset(now)
+            self.reflex.rearm()
+            self._notify("Back in stance. Walking again.")
+
+    # ----------------------------------------------------------------- get-up ----
+    def _load_getup_policy(self):
+        """Load the configured get-up policy on a background thread."""
+        want = self.getup_cfg["policy"]
+        if self._getup_policy is not None and self._getup_policy_id == want:
+            return
+        slot = self.policy_manager.slots.get(want)
+        if slot is None or slot.kind != "getup":
+            self._getup_note = f"get-up policy '{want}' not found"
+            return
+        self._getup_policy = None
+        self._getup_note = "loading"
+
+        def work():
+            policy, problem = policy_slots.load_slot(slot, self._policy_loader)
+            if self.getup_cfg["policy"] != slot.id:
+                return                      # the choice changed meanwhile
+            if policy is None:
+                self._getup_note = problem
+                print(f"[getup] {slot.name}: {problem}")
+            else:
+                self._getup_policy, self._getup_policy_id = policy, slot.id
+                self._getup_note = ""
+                print(f"[getup] policy loaded: {slot.name}")
+        threading.Thread(target=work, daemon=True).start()
+
+    def _lying(self):
+        return self.tilt.tilt_deg > 50.0
+
+    def _maybe_auto_getup(self, now):
+        """After a fall, start the get-up by itself if the operator asked for that.
+        Only when the duck is really lying down: being lifted also opens both foot
+        switches, and a get-up in someone's hands must not happen."""
+        if self.getup_cfg["enabled"] and self.getup_cfg["auto"] and self._lying():
+            self._getup_attempts = 0
+            self._start_getup(now, auto=True)
+
+    def _start_getup(self, now, auto=False):
+        if not self.getup_cfg["enabled"]:
+            self._notify("Get-up is switched off (TUNE → Get-up).")
+            return False
+        if self._activity in ("getup", "reflex", "recover"):
+            return False
+        if not auto and not (self.paused or self.fall_detector.fallen):
+            self._notify("Pause first: the get-up only starts from a standstill.")
+            return False
+        if self._getup_policy is None:
+            self._load_getup_policy()
+            self._notify(f"Get-up policy not ready ({self._getup_note or 'loading'}).")
+            return False
+        pos, _ = self._read_joints()
+        if pos is None:
+            self._notify("Cannot read the joints; get-up not started.")
+            return False
+        if not auto:
+            self._getup_attempts = 0
+        self._getup_attempts += 1
+        ctl = GetUpController(self._getup_policy, self.init_pos, self.getup_cfg,
+                              self.control_freq)
+        ctl.start(pos, now)
+        self._write_targets(ctl.targets)        # goal = current pose, then stiffen
+        if self._soft and not self._stiffen():
+            return False
+        if self.offset_tuner.holding:
+            self.offset_tuner.release()
+        if self.recorder.state == "playing":
+            self.recorder.state = "idle"
+        self.getup = ctl
+        self._activity = "getup"
+        self.paused = False
+        self._getup_take = self.blackbox.start_take("getup")
+        self._notify(f"Get-up running (attempt {self._getup_attempts}). A aborts.", 12.0)
+        return True
+
+    def _end_getup_take(self):
+        if self._getup_take:
+            self.blackbox.stop_take()
+            self._getup_take = False
+
+    def _abort_getup(self, why):
+        if self.getup is not None:
+            self.getup.abort(why)
+        self._activity = None
+        self.paused = True
+        self._go_soft()                 # do not stall the servos against the floor
+        self._end_getup_take()
+        self._notify(f"Get-up stopped: {why}.", 15.0)
+
+    def _getup_tick(self, now):
+        ctl = self.getup
+        pos, vel = self._read_joints()
+        if pos is None:
+            return
+        imu = self._last_imu
+        targets = ctl.step(pos, vel, imu["gyro"], imu["accelero"],
+                           self.feet_contacts.get(), now)
+        self._write_targets(targets)
+        self._rec_tick(now, pos=pos, vel=vel, action=ctl.a1)
+        if ctl.phase == "done":
+            # Standing: let the WALK policy balance at zero command instead of
+            # freezing in a pose (leftover momentum tips a frozen duck over).
+            self._reset_policy_state()
+            self.fall_detector.reset(now)
+            self.reflex.rearm()
+            self._activity = "balance"
+            self._balance_until = now + self.getup_cfg["balance_s"]
+            self._notify("Standing. Balancing.")
+        elif ctl.phase == "failed":
+            auto = self.getup_cfg["auto"]
+            if (auto and self._lying()
+                    and self._getup_attempts < self.getup_cfg["max_auto_attempts"]):
+                self._end_getup_take()
+                self._activity = None
+                self._start_getup(now, auto=True)
+            else:
+                self._abort_getup(ctl.result)
+
+    def _capture_standing_reference(self):
+        """Store what THIS duck's accelerometer reads standing in the stance pose, so
+        the get-up policy can be fed readings in the frame it was trained with."""
+        home = np.array(self.init_pos, dtype=float)
+        at_stance = (self.paused and self._activity is None and not self._soft
+                     and self.offset_tuner.holding
+                     and float(np.max(np.abs(self.motor_targets - home))) < 0.02)
+        if not at_stance:
+            self._notify("Hold the stance first, then capture.")
+            return
+        if len(self._acc_window) < 25:
+            self._notify("Keep holding still for a moment, then capture again.")
+            return
+        window = np.array(self._acc_window, dtype=float)
+        if float(np.max(np.std(window, axis=0))) > 0.25:
+            self._notify("Too much movement. Let the duck stand still and retry.")
+            return
+        acc = getup_mod.clean_acc(np.median(window, axis=0))
+        if acc is None:
+            self._notify("That reading is not gravity; reference not saved.")
+            return
+        self.getup_cfg["imu_standing_acc"] = [round(v, 3) for v in acc]
+        self._save_async({"getup": self._getup_config_dict()})
+        self._notify("Standing reference saved.")
+
+    def _getup_config_dict(self):
+        c = self.getup_cfg
+        out = {k: (round(float(c[k]), 4) if isinstance(c[k], float) else c[k])
+               for k in getup_mod.DEFAULTS if k != "imu_standing_acc"}
+        out["imu_standing_acc"] = c["imu_standing_acc"]
+        return out
+
+    # ------------------------------------------------------------ pause button ----
+    def _on_pause_button(self, t):
+        """A on the pad / PAUSE on the phone. Besides pause and resume it is the one
+        'stop what you are doing' button for the get-up and the recovery glide."""
+        if self._activity == "getup":
+            self._abort_getup("stopped by the operator")
+            return
+        if self._activity == "reflex":
+            return                          # already heading for the floor
+        if self._activity == "recover":
+            self._activity = None
+            self.paused = True
+            print("PAUSE")
+            return
+        if self.paused and self._soft:
+            self._begin_recover(t)
+            return
+        self.paused = not self.paused
+        if self.paused:
+            if self._activity in ("balance", "switch"):
+                self._activity = None
+                self._end_getup_take()
+            print("PAUSE")
+        else:
+            print("UNPAUSE")
+            self.fall_detector.reset(t)     # re-arm after righting
+            self.reflex.rearm()
+            self.shaper.reset()
+
+    # -------------------------------------------- live settings (stability suite) ----
+    def _consume_suite_settings(self, settings, saves, resets, now):
+        pol = settings.get("policy") or {}
+        if "active" in pol:
+            if not self.policy_manager.request(pol["active"]):
+                self._notify(self.policy_manager.message)
+        if pol.get("cancel"):
+            self.policy_manager.cancel()
+
+        safety = settings.get("safety") or {}
+        for key, value in safety.items():
+            if key == "reset_peaks":
+                self.reflex.reset_peaks()
+                self.loop_health.reset()
+            elif not self.reflex.set(key, value):
+                print(f"[reflex] ignoring bad setting {key}={value!r}")
+        if "safety" in resets:
+            self.reflex.cfg = fall_reflex_mod.clean_config({})
+            self._notify("Fall reflex reset to defaults (Save to keep).")
+        if "safety" in saves:
+            self._save_async({"fall_reflex": dict(self.reflex.cfg)})
+            self._notify("Fall reflex settings saved.")
+
+        gu = settings.get("getup") or {}
+        for key, value in gu.items():
+            if key in ("start", "abort", "capture_reference"):
+                continue
+            merged = getup_mod.clean_config({**self.getup_cfg, key: value})
+            merged["imu_standing_acc"] = self.getup_cfg["imu_standing_acc"]
+            self.getup_cfg = merged
+        if "enabled" in gu or "policy" in gu:
+            if self.getup_cfg["enabled"]:
+                self._load_getup_policy()
+        if gu.get("capture_reference"):
+            self._capture_standing_reference()
+        if gu.get("abort") and self._activity == "getup":
+            self._abort_getup("stopped by the operator")
+        if gu.get("start"):
+            self._start_getup(now)
+        if "getup" in resets:
+            keep = self.getup_cfg["imu_standing_acc"]
+            self.getup_cfg = getup_mod.clean_config({"imu_standing_acc": keep})
+            self._notify("Get-up reset to defaults (Save to keep).")
+        if "getup" in saves:
+            self._save_async({"getup": self._getup_config_dict()})
+            self._notify("Get-up settings saved.")
+
+        rec = settings.get("recorder") or {}
+        if rec.get("mark"):
+            ok = self.blackbox.mark("mark")
+            self._notify("Marked: the last seconds will be saved." if ok
+                         else "Recorder is off or busy.")
+        if "take" in rec:
+            if rec["take"]:
+                if self.blackbox.start_take("take_" + self.policy_manager.active_id):
+                    self._notify("Recording a take. Stop it when done.", 3.0)
+            elif self.blackbox.stop_take():
+                self._notify("Take saved.")
+        if "enabled" in rec:
+            self.blackbox.cfg["enabled"] = bool(rec["enabled"])
+        if "recorder" in saves:
+            self._save_async({"flight_recorder": dict(self.blackbox.cfg)})
+
+    def _suite_telemetry(self, now):
+        """The extra /api/state entries of the stability suite."""
+        gc = self.getup_cfg
+        return {
+            "activity": self._mode_name(),
+            "soft": bool(self._soft),
+            "tilt_deg": round(float(self.tilt.tilt_deg), 1),
+            "policy": self.policy_manager.status(),
+            "safety": self.reflex.public(),
+            "getup": {
+                "enabled": bool(gc["enabled"]), "auto": bool(gc["auto"]),
+                "policy": gc["policy"], "ready": self._getup_policy is not None,
+                "note": self._getup_note,
+                "has_reference": gc["imu_standing_acc"] is not None,
+                "attempts": self._getup_attempts,
+                "run": self.getup.public() if self.getup is not None else None,
+                "config": {k: gc[k] for k in getup_mod.LIMITS},
+            },
+            "blackbox": self.blackbox.public(),
+            "loop": self.loop_health.public(),
+            "command_slew": self.shaper.public(),
+            "servo_voltages": dict(getattr(self.hwi, "servo_voltages", {}) or {}),
+        }
 
     # ------------------------------------------------------ helpers (walk) ----
     def _walk_stick_active(self, c):
@@ -460,6 +1053,7 @@ class RLWalk:
         if self.web_bus is None:
             return
         settings, saves, resets = self.web_bus.consume_settings()
+        self._consume_suite_settings(settings, saves, resets, time.time())
         # Stance first: a hold and an edit can arrive in the same tick.
         if (settings.get("stance") or {}).get("hold"):
             self._enter_stance_hold()
@@ -514,6 +1108,9 @@ class RLWalk:
                     self.governor.floor = float(np.clip(float(v), 0.0, 1.0))
                 elif key == "governor_smooth":
                     self.governor.smooth = float(np.clip(float(v), 0.01, 1.0))
+                elif key.startswith("slew_"):
+                    if not self.shaper.set(key[len("slew_"):], v):
+                        print(f"[walk] ignoring bad setting {key}={v!r}")
             except (ValueError, TypeError):
                 print(f"[walk] ignoring bad setting {key}={v!r}")
 
@@ -531,12 +1128,25 @@ class RLWalk:
 
     def _save_walk_settings(self):
         from mini_bdx_runtime.duck_config import save_config_fields
+        # action_scale and the gait offset belong to the POLICY: the top-level keys
+        # stay the stock walk's values; any other slot keeps its own under "policies".
+        active = self.policy_manager.active_id
+        live = self._live_tuning()
+        if active == policy_slots.STOCK_ID:
+            self._stock_tuning = dict(live)
+        else:
+            self.policy_manager.remember_tuning(active, live)
+        self._session_tuning[active] = dict(live)
+        stock = self._stock_tuning
         fields = {
-            "action_scale": round(float(self._action_scale_target), 4),
-            "phase_frequency_factor_offset": round(float(self.phase_frequency_factor_offset), 4),
+            "action_scale": round(float(stock["action_scale"]), 4),
+            "phase_frequency_factor_offset": round(
+                float(stock["phase_frequency_factor_offset"]), 4),
             "velocity_clip": bool(self.velocity_clip),
             "max_motor_velocity_rad_s": round(float(self.max_motor_velocity), 3),
             "stability_governor": self._governor_config_dict(),
+            "command_slew": self.shaper.public(),
+            "policies": self.policy_manager.config_fields(),
         }
         backup = save_config_fields(fields)
         print(f"[walk] SAVED walk tuning {fields} (backup {backup})")
@@ -557,6 +1167,7 @@ class RLWalk:
         self.governor.rate_hi = float(g["rate_hi"])
         self.governor.floor = float(g["floor"])
         self.governor.smooth = float(g["smooth"])
+        self.shaper.cfg = dict(self.shaper.cfg, **d.get("command_slew", {}))
         print(f"[walk] RESET walk tuning to known-good defaults {d} (Save to persist)")
 
     def _reset_imu_trim(self):
@@ -585,6 +1196,9 @@ class RLWalk:
     def _enter_stance_hold(self):
         """Pause and glide to the standing pose, the only pose where an offset error
         can be judged. A plain pause keeps the last mid-stride goal, which can't be."""
+        if self._activity is not None or self._soft:
+            self._notify("Not now: stand the duck up and resume first.")
+            return
         self.paused = True
         if self.recorder.state == "playing":
             self.recorder.state = "idle"
@@ -618,7 +1232,8 @@ class RLWalk:
             return
         # Voltage read = a ~0.2 s bus handoff -> only safe while PAUSED (servos hold).
         # While walking we hold the last reading; it refreshes each time you pause.
-        allow_batt = self.paused and self.duck_config.battery_servo_read
+        allow_batt = (self.paused and self._activity is None
+                      and self.duck_config.battery_servo_read)
         batt = (self.battery_mon.sample(now, self.hwi, allow_read=allow_batt)
                 if self.battery_mon
                 else {"voltage": None, "percent": None, "charging": None})
@@ -656,12 +1271,15 @@ class RLWalk:
             },
             antenna_anim=bool(self.antenna_anim.enabled),
             antenna_sync=bool(self.antenna_anim.sync),
+            message=self._notice if now < self._notice_until else "",
+            extra=self._suite_telemetry(now),
         ))
 
-    def get_obs(self):
+    def get_obs(self, imu_data=None):
 
-        imu_data = self.imu.get_data()
-        self._last_imu = imu_data
+        if imu_data is None:
+            imu_data = self.imu.get_data()
+            self._last_imu = imu_data
 
         dof_pos = self.hwi.get_present_positions(
             ignore=[
@@ -717,6 +1335,7 @@ class RLWalk:
         # lower head kps
         kps[5:9] = [8, 8, 8, 8]
 
+        self._kps_full = list(kps)
         self.hwi.set_kps(kps)
         self.hwi.set_kds(kds)
         self.hwi.turn_on()
@@ -754,7 +1373,13 @@ class RLWalk:
                     self.loop_hz = 0.9 * self.loop_hz + 0.1 * (
                         1.0 / max(1e-6, self._tick_dt)
                     )
+                    # Only ticks that follow a controlling tick count: a pause
+                    # sleeps 100 ms on purpose and is not a late tick.
+                    if self._prev_tick_active:
+                        self.loop_health.update(self._tick_dt)
+                self._prev_tick_active = False
                 self._last_tick_t = t
+                self._sense(t)
 
                 raw_commands = list(self.last_commands)
                 sprint = False
@@ -801,7 +1426,9 @@ class RLWalk:
                             # playback sets (not blind-toggles) the lamp.
                             self.recorder.record_projector(self.projector.on)
 
-                    if self.buttons.B.triggered:
+                    if trim_mode and self.buttons.B.triggered:
+                        self._start_getup(t)        # RB + B = get up
+                    elif self.buttons.B.triggered:
                         if (self.duck_config.speaker and self.sounds.ok
                                 and self.sounds.sounds):
                             # Pick the sound HERE (not inside play_random_sound)
@@ -821,12 +1448,7 @@ class RLWalk:
                         self.antennas.set_position_right(ant_r)
 
                     if self.buttons.A.triggered:
-                        self.paused = not self.paused
-                        if self.paused:
-                            print("PAUSE")
-                        else:
-                            print("UNPAUSE")
-                            self.fall_detector.reset(t)  # re-arm after righting
+                        self._on_pause_button(t)
 
                     # whole-body record / playback (DPAD left/right) -- suppressed
                     # while RB (trim mode) borrows the D-pad.
@@ -846,6 +1468,7 @@ class RLWalk:
 
                 # live walk-tuning / antenna edits from the Web UI (apply + save)
                 self._consume_web_settings()
+                self._service_policy_switch(t)
 
                 # Offsets only slew on ticks that write to the servos. Advancing them
                 # during a plain pause would bank a jump for the next write.
@@ -854,19 +1477,39 @@ class RLWalk:
                 if not self.paused or self.offset_tuner.holding:
                     self.offset_tuner.step(self._tick_dt)
 
-                # ramp action_scale toward its web-set target (no sudden amplitude jump)
-                if self.action_scale != self._action_scale_target:
+                # ramp action_scale toward its web-set target (no sudden amplitude jump);
+                # a policy swap fades it to zero first (see _service_policy_switch)
+                scale_goal = self._action_scale_target
+                if self._activity == "switch" and t >= self._switch_until:
+                    scale_goal = 0.0
+                if self.action_scale != scale_goal:
                     self.action_scale += float(np.clip(
-                        self._action_scale_target - self.action_scale,
+                        scale_goal - self.action_scale,
                         -ACTION_SCALE_RAMP, ACTION_SCALE_RAMP))
 
                 # scanner sound follows the LED even while paused; publish telemetry
                 self._couple_scanner(t)
                 self._publish_telemetry(t)
 
+                # Get-up, fall reflex and the glide back to stance own the motors
+                # while they run; the walk policy is not consulted on those ticks.
+                if self._activity == "getup":
+                    self._getup_tick(t)
+                    self._end_tick(t)
+                    continue
+                if self._activity == "reflex":
+                    self._reflex_tick(t)
+                    self._end_tick(t)
+                    continue
+                if self._activity == "recover":
+                    self._recover_tick(t)
+                    self._end_tick(t)
+                    continue
+
                 if self.paused:
-                    # get_obs() doesn't run while paused; keep the horizon live anyway.
-                    self._last_imu = self.imu.get_data()
+                    # Nothing more is recorded while paused, so write out any event
+                    # still waiting for its "seconds after" (a fall ends paused).
+                    self.blackbox.flush()
                     if self.offset_tuner.holding:
                         self._hold_stance_tick()
                         time.sleep(1 / self.control_freq)
@@ -882,22 +1525,55 @@ class RLWalk:
                         self.recorder.state = "idle"  # stop playback if we fell
                     print("⚠ FALL DETECTED — auto-paused. Right the duck, then "
                           "press A (or web Resume) to continue.")
+                    self.blackbox.mark("fall", f"tilt {self.tilt.tilt_deg:.0f}")
                     if self.duck_config.speaker:
                         try:
                             self.sounds.play("beep2.wav")
                         except Exception:  # noqa: BLE001
                             pass
+                    self._maybe_auto_getup(t)
                     time.sleep(0.1)
                     continue
 
                 # ---- choose command source: recorded playback vs live control ----
                 self.last_commands = self._commands_for_tick(raw_commands, sprint, t)
 
-                # Throttle drive velocity if the duck is tipping (no-op unless enabled).
+                # Standing still on purpose: balancing after a get-up, or settling
+                # before a policy swap. The policy runs, the sticks are ignored.
+                if self._activity == "balance":
+                    self.last_commands = [0.0] * 7
+                    if t >= self._balance_until:
+                        self._activity = None
+                        self._end_getup_take()
+                        self._notify("Up again. You have control.")
+                elif self._activity == "switch":
+                    self.last_commands = [0.0] * 7
+                    if t >= self._switch_until and self.action_scale <= 1e-9:
+                        self._activity = None
+                        self._swap_policy(t)
+
+                # Ramp the drive commands (no-op unless enabled), then throttle them
+                # if the duck is tipping (no-op unless enabled).
+                self.shaper.apply(self.last_commands, 1 / self.control_freq)
                 self._apply_stability_governor(self.last_commands)
 
-                obs = self.get_obs()
+                # Past the point of no return? Stop driving the legs and land softly
+                # (or, in observe mode, only log that it would have).
+                event = self._update_reflex(t)
+                if event == "would_trigger":
+                    lt = self.reflex.last_trigger or {}
+                    self.blackbox.mark("reflex_observed",
+                                       f"tilt {lt.get('tilt')} predicted {lt.get('predicted')}")
+                    print(f"[reflex] observe: would have triggered at tilt "
+                          f"{lt.get('tilt')}° (predicted {lt.get('predicted')}°)")
+                elif event in ("trigger", "trigger_soft"):
+                    self._begin_reflex(t, event)
+                    self._end_tick(t)
+                    continue
+
+                obs = self.get_obs(self._last_imu)
                 if obs is None:
+                    self.loop_health.note_read_failure()
                     continue
 
                 self.imitation_i += 1 * (
@@ -968,6 +1644,10 @@ class RLWalk:
                 i += 1
 
                 took = time.time() - t
+                self._rec_tick(t, pos=obs[13:27] + self.init_pos, vel=obs[27:41] / 0.05,
+                               action=action, took=took)
+                self._prev_tick_active = True
+                took = time.time() - t
                 # print("Full loop took", took, "fps : ", np.around(1 / took, 2))
                 if (1 / self.control_freq - took) < 0:
                     print(
@@ -977,6 +1657,8 @@ class RLWalk:
                 time.sleep(max(0, 1 / self.control_freq - took))
 
         except KeyboardInterrupt:
+            self.blackbox.stop_take()
+            self.blackbox.flush()
             if self.duck_config.antennas:
                 self.antennas.stop()
             if self.duck_config.eyes:
