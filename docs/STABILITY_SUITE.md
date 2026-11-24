@@ -4,7 +4,7 @@ New in the next release: selectable walk policies, a soft landing when the duck 
 a get-up, and a black-box recorder to tune all of it with real data.
 
 **Status: built and tested off-robot only.** Every part runs on a simulated duck (the
-real walk loop on a fake servo bus, 136 new tests) and the real policy files load and run.
+real walk loop on a fake servo bus, 138 new tests) and the real policy files load and run.
 Nothing here has moved a real duck yet. The first test below is that step.
 
 With no new settings, the walk is unchanged: the servo commands are identical to the
