@@ -990,7 +990,8 @@ function paneHealth(s){
       <div class="sub">The walk needs a fresh step every 20 ms. Late steps make a good policy stumble.</div>
       <div class="kv"><span>Late steps, last minute</span><b id="lhLate">–</b>
         <span>Slowest step</span><b id="lhWorst">–</b>
-        <span>Failed servo reads</span><b id="lhFail">–</b></div>
+        <span>Failed servo reads</span><b id="lhFail">–</b>
+        <span>Steps on an old sensor reading</span><b id="lhImu">–</b></div>
       <button class="btn treset" data-act="safety:reset_peaks">↺ CLEAR THE COUNTERS</button></div>
     <div class="tsec"><span class="lbl">Servo supply at rest</span>
       <div class="sub">Read while paused. A servo well below the others points at a weak cable or plug on that leg. For the reading under load, run voltage_sag_test.py.</div>
@@ -1201,6 +1202,8 @@ function updateTuneLive(s){
     setTxt("lhLate",(lh.late_pct||0).toFixed(1)+" %", lh.late_pct>5?"bad":lh.late_pct>1?"warn":"good");
     setTxt("lhWorst",(lh.worst_ms||0).toFixed(0)+" ms", lh.worst_ms>60?"bad":lh.worst_ms>30?"warn":"");
     setTxt("lhFail",String(lh.read_failures||0), lh.read_failures>0?"warn":"");
+    const run=lh.imu_longest_repeat||0;
+    setTxt("lhImu",(lh.imu_repeat_pct||0).toFixed(0)+" %, longest "+run+" in a row", run>5?"bad":run>2?"warn":"");
   }
   const vl=$("voltList"), sv=s.servo_voltages;
   if(vl && sv && Object.keys(sv).length){

@@ -145,7 +145,8 @@ def _suite_state(t, pitch, roll, fallen):
                      "saved": BLACKBOX["saved"], "last_file": BLACKBOX["last_file"],
                      "error": "", "pending": 0},
         "loop": {"late_pct": round(0.6 + 0.5 * math.sin(t * 0.3), 1), "late_total": 14,
-                 "worst_ms": 41.0, "read_failures": 0, "ticks": int(t * 50)},
+                 "worst_ms": 41.0, "read_failures": 0, "ticks": int(t * 50),
+                 "imu_repeat_pct": 6.0, "imu_longest_repeat": 2},
         "command_slew": dict(SLEW),
         "servo_voltages": volts,
     }

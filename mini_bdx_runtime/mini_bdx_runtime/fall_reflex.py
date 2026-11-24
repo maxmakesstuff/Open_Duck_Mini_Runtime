@@ -101,8 +101,10 @@ class TiltEstimator:
     Needs gyro and accelerometer in one consistent right-handed frame, which the
     BNO055 axis remap and the mounting trim both preserve."""
 
-    def __init__(self, accel_gain=0.04, trust_band=0.2, use_gyro=True):
-        self.accel_gain = float(accel_gain)
+    def __init__(self, accel_tau=0.5, trust_band=0.2, use_gyro=True):
+        # Time constant (s) of the pull toward the accelerometer. Time-based so the
+        # estimate settles equally fast at 50 Hz (walking) and 10 Hz (paused).
+        self.accel_tau = float(accel_tau)
         self.trust_band = float(trust_band)
         self.use_gyro = bool(use_gyro)
         self.up = None                 # unit vector, body frame
@@ -142,7 +144,8 @@ class TiltEstimator:
                 # Full trust at exactly 1 g, none outside the band.
                 off = abs(a_mag - G) / G
                 trust = _clamp(1.0 - off / self.trust_band, 0.0, 1.0)
-                gain = self.accel_gain * trust if self.use_gyro else 0.25
+                gain = ((1.0 - math.exp(-dt / self.accel_tau)) * trust
+                        if self.use_gyro else 0.25)
                 u = (u[0] + gain * (a[0] / a_mag - u[0]),
                      u[1] + gain * (a[1] / a_mag - u[1]),
                      u[2] + gain * (a[2] / a_mag - u[2]))

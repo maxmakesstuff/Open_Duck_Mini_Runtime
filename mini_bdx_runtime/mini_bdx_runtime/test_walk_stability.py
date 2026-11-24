@@ -554,6 +554,54 @@ def test_auto_getup_starts_by_itself_only_when_lying():
     run_duck(scenario, config={**REFLEX_ON, "getup": {"enabled": True, "auto": True}})
 
 
+def test_auto_getup_gives_up_when_the_duck_keeps_falling_again():
+    """Stand up, fall, stand up, fall: after the allowed tries it waits for a person
+    instead of looping until the battery is flat."""
+    def scenario(duck, post, state):
+        imu = Imu(duck)
+        yield from wait_for(lambda: state()["getup"]["ready"], "the get-up policy")
+        FakePolicy.action = 0.1
+        starts = 0
+        for _ in range(2):
+            imu.fall()
+            yield from wait_for(lambda: duck._activity == "getup", "an automatic get-up")
+            starts += 1
+            yield from ticks(10)
+            imu.upright()
+            yield from wait_for(lambda: duck._activity == "balance", "standing")
+        imu.fall()                                   # third fall in a row
+        yield from wait_for(lambda: duck.paused, "down again")
+        yield from ticks(20)
+        s = state()
+        assert starts == 2 and s["activity"] == "paused" and s["soft"]
+        assert "Waiting for you" in s["message"]
+        # the operator stands it up and resumes: the tries are back
+        imu.upright()
+        yield from ticks(3)
+        press_a(duck)
+        yield from wait_for(lambda: duck._activity is None and not duck.paused, "walking")
+        assert duck._auto_getups == 0
+    run_duck(scenario, config={**REFLEX_ON, "getup": {
+        "enabled": True, "auto": True, "balance_s": 5.0, "max_auto_attempts": 2}})
+
+
+def test_tilt_estimate_settles_quickly_once_stood_up_while_paused():
+    """Paused ticks come at 10 Hz. Resume must not be refused for seconds after the
+    duck has been stood up."""
+    def scenario(duck, post, state):
+        imu = Imu(duck)
+        yield from ticks(5)
+        imu.fall()
+        yield from wait_for(lambda: duck.paused, "down")
+        imu.th, imu.falling = 0.0, False             # stood up; estimator NOT reset
+        yield from ticks(25)                         # 2.5 s of paused ticks
+        assert duck.tilt.tilt_deg < 10, f"still reads {duck.tilt.tilt_deg:.0f} deg"
+        press_a(duck)
+        yield from ticks(3)
+        assert state()["activity"] == "recover"
+    run_duck(scenario, config=REFLEX_ON)
+
+
 def test_auto_getup_does_not_start_for_a_lifted_duck():
     """Both foot switches open for 2.5 s is also what being picked up looks like."""
     def scenario(duck, post, state):

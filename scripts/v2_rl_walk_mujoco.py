@@ -381,6 +381,10 @@ class RLWalk:
         self._getup_note = ""
         self._getup_attempts = 0
         self._getup_take = False
+        # Automatic get-ups since the duck last walked for a while or the operator
+        # stepped in. Bounds a stand-up / fall-over / stand-up loop.
+        self._auto_getups = 0
+        self._walk_since = time.time()
         self.shaper = CommandShaper(self.duck_config.command_slew)
         self.loop_health = LoopHealth(self.control_freq)
         self.blackbox = FlightRecorder(
@@ -460,9 +464,15 @@ class RLWalk:
         self.shaper.reset()
 
     def _end_tick(self, t):
-        self._prev_tick_active = True
+        self._note_control_tick()
         took = time.time() - t
         time.sleep(max(0, 1 / self.control_freq - took))
+
+    def _note_control_tick(self):
+        """Bookkeeping for a tick that drove the motors."""
+        self._prev_tick_active = True
+        imu = self._last_imu or {}
+        self.loop_health.note_imu(imu.get("gyro"), imu.get("accelero"))
 
     def _mode_name(self):
         if self._activity:
@@ -566,6 +576,7 @@ class RLWalk:
 
     def _begin_reflex(self, now, event):
         self._activity = "reflex"
+        self._end_getup_take()
         if self.recorder.state == "playing":
             self.recorder.state = "idle"
         lt = self.reflex.last_trigger or {}
@@ -660,9 +671,14 @@ class RLWalk:
         """After a fall, start the get-up by itself if the operator asked for that.
         Only when the duck is really lying down: being lifted also opens both foot
         switches, and a get-up in someone's hands must not happen."""
-        if self.getup_cfg["enabled"] and self.getup_cfg["auto"] and self._lying():
-            self._getup_attempts = 0
-            self._start_getup(now, auto=True)
+        if not (self.getup_cfg["enabled"] and self.getup_cfg["auto"] and self._lying()):
+            return
+        if self._auto_getups >= self.getup_cfg["max_auto_attempts"]:
+            self._notify("Fell again right after getting up. Waiting for you now.", 30.0)
+            return
+        self._auto_getups += 1
+        self._getup_attempts = 0
+        self._start_getup(now, auto=True)
 
     def _start_getup(self, now, auto=False):
         if not self.getup_cfg["enabled"]:
@@ -733,6 +749,7 @@ class RLWalk:
             self.reflex.rearm()
             self._activity = "balance"
             self._balance_until = now + self.getup_cfg["balance_s"]
+            self._walk_since = now
             self._notify("Standing. Balancing.")
         elif ctl.phase == "failed":
             auto = self.getup_cfg["auto"]
@@ -791,7 +808,9 @@ class RLWalk:
             print("PAUSE")
             return
         if self.paused and self._soft:
-            self._begin_recover(t)
+            if self._begin_recover(t):
+                self._auto_getups = 0
+                self._walk_since = t
             return
         self.paused = not self.paused
         if self.paused:
@@ -804,6 +823,8 @@ class RLWalk:
             self.fall_detector.reset(t)     # re-arm after righting
             self.reflex.rearm()
             self.shaper.reset()
+            self._auto_getups = 0           # the operator stepped in
+            self._walk_since = t
 
     # -------------------------------------------- live settings (stability suite) ----
     def _consume_suite_settings(self, settings, saves, resets, now):
@@ -1646,7 +1667,10 @@ class RLWalk:
                 took = time.time() - t
                 self._rec_tick(t, pos=obs[13:27] + self.init_pos, vel=obs[27:41] / 0.05,
                                action=action, took=took)
-                self._prev_tick_active = True
+                self._note_control_tick()
+                # a stretch of plain walking earns the automatic get-up its tries back
+                if self._activity is None and t - self._walk_since > 20.0:
+                    self._auto_getups = 0
                 took = time.time() - t
                 # print("Full loop took", took, "fps : ", np.around(1 / took, 2))
                 if (1 / self.control_freq - took) < 0:

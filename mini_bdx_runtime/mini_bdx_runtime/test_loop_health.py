@@ -41,7 +41,18 @@ def test_bad_dt_and_read_failures_and_reset():
     assert h.public()["read_failures"] == 1 and h.late_total == 1
     h.reset()
     assert h.public() == {"late_pct": 0.0, "late_total": 0, "worst_ms": 0.0,
-                          "read_failures": 0, "ticks": 0}
+                          "read_failures": 0, "ticks": 0, "imu_repeat_pct": 0.0,
+                          "imu_longest_repeat": 0}
+
+
+def test_repeated_imu_samples_are_counted_with_the_longest_run():
+    h = LoopHealth(50)
+    a, b = ((0.1, 0, 0), (0, 0, 9.8)), ((0.2, 0, 0), (0, 0, 9.8))
+    runs = [h.note_imu(*s) for s in (a, b, b, b, b, a, a, b)]
+    assert runs == [0, 0, 1, 2, 3, 0, 1, 0]
+    p = h.public()
+    assert p["imu_longest_repeat"] == 3 and p["imu_repeat_pct"] == 50.0
+    assert h.note_imu(None, None) == 0 and h.imu_samples == 8, "junk is ignored"
 
 
 if __name__ == "__main__":
