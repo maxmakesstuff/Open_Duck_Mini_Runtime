@@ -249,6 +249,11 @@ Keys added by this fork, on top of the upstream `joints_offsets` /
 | `antenna_free_anim` | `true` | Scripted idle ear wiggle. |
 | `antenna_sync` | `false` | Ears in unison vs. independent. |
 | `camera_controls` | `{}` | Persisted libcamera controls (exposure, gain, …). |
+| `policies` | `{}` (stock) | `active`: the walk policy to start with; `tuning`: action scale and gait offset per policy. Written by the phone. |
+| `fall_reflex` | `{}` (observe) | Soft landing: `mode` (`off` / `observe` / `active`) and its thresholds. |
+| `getup` | `{}` (off) | Get-up: `enabled`, `auto`, `policy`, timing values, and `imu_standing_acc` (captured per duck). |
+| `flight_recorder` | `{}` (on) | Black box: `enabled`, `pre_s`, `post_s`, `max_files`, `max_take_s`. |
+| `command_slew` | `{}` (off) | Stick ramp: `enabled`, `lin_accel`, `ang_accel`, `stop_factor`. |
 
 > **Never copy one duck's `duck_config.json` onto another** — `joints_offsets` and
 > `imu_trim` are that robot's mechanical zero. Seed the transferable walk tuning with
