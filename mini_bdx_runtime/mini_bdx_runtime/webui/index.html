@@ -204,7 +204,7 @@ body{
        border-radius:50%; background:radial-gradient(circle at 40% 35%,#ffd27a,var(--amber-hot));
        box-shadow:0 0 0 2px rgba(16,14,10,.7),0 0 12px rgba(255,140,26,.5)}
 .ant.hidden{display:none}
-.trim{margin-top:12px; padding:9px 11px; border:1px solid var(--line); border-radius:12px;
+.trim{margin-top:8px; padding:9px 11px; border:1px solid var(--line); border-radius:12px;
       background:var(--panel); display:flex; align-items:center; gap:12px; flex-wrap:wrap;
       justify-content:center}
 .trim.hidden{display:none}
@@ -278,6 +278,120 @@ input[type=range]::-moz-range-thumb{width:22px; height:22px; border:none; border
        border:1px solid var(--line); border-left:2px solid var(--amber); border-radius:8px; padding:7px 9px; margin-top:5px}
 .thelp.hidden{display:none}
 .thelp b{color:var(--amber); font-weight:400}
+
+/* ---------- status strip + fall actions (main screen) ---------- */
+#strip{display:flex; gap:8px; align-items:stretch; flex:0 0 auto}
+#strip.hidden{display:none}
+.chip{-webkit-appearance:none; appearance:none; font-family:var(--mono); cursor:pointer;
+      display:flex; align-items:center; gap:8px; min-height:38px; padding:5px 11px; min-width:0;
+      background:var(--panel); border:1px solid var(--line); border-radius:11px; color:var(--ink)}
+.chip:active{border-color:var(--amber)}
+.chip:focus-visible{outline:2px solid var(--amber); outline-offset:2px}
+.chip.pol{flex:1; justify-content:space-between}
+.chip.pol b{font-weight:400; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.chip.pol i{font-style:normal; color:var(--amber); font-size:11px; flex:0 0 auto}
+.chip.busy{border-color:var(--amber)} .chip.busy b{color:var(--amber)}
+.chip.mark{flex:0 0 auto; color:var(--dim); font-size:11px; letter-spacing:.12em}
+.chip.mark .rd{width:9px; height:9px; border-radius:50%; background:var(--alarm); box-shadow:0 0 8px rgba(255,75,58,.6)}
+.chip.mark.done{border-color:var(--ok); color:var(--ok)} .chip.mark.done .rd{background:var(--ok); box-shadow:none}
+#fallbar{display:none; gap:8px; flex:0 0 auto}
+#fallbar.show{display:grid; grid-template-columns:1fr 1fr}
+#fallbar.one{grid-template-columns:1fr}
+.btn.act{min-height:50px; flex-direction:row; gap:8px; font-family:var(--sans); font-weight:800;
+         letter-spacing:.12em; font-size:13px; border-color:var(--amber); color:var(--amber)}
+.btn.act.go{background:linear-gradient(180deg,var(--amber),var(--amber-hot)); color:var(--void); border-color:var(--amber)}
+.btn.act.stop{border-color:var(--alarm); color:#ffd9d2}
+.btn.act[disabled]{opacity:.4; pointer-events:none}
+#note{flex:0 0 auto; font-size:11.5px; line-height:1.4; color:var(--ink); text-align:center;
+      padding:7px 10px; border:1px solid var(--line); border-left:2px solid var(--amber);
+      border-radius:9px; background:var(--well); display:none}
+#note.show{display:block}
+/* short or narrow phones: smaller sticks, and the controls may scroll as a last resort */
+#controls{overflow-y:auto; overscroll-behavior:contain; scrollbar-width:none}
+#controls::-webkit-scrollbar{display:none}
+@media (max-height:760px){ .stick{max-width:150px} .btn{min-height:42px} #controls{gap:8px} }
+@media (max-height:680px){ .stick{max-width:124px} .btn{min-height:38px} .btn.act{min-height:44px}
+  .att{width:62px; height:62px} #tele{padding:8px 10px} }
+@media (max-width:375px){ .brand .bt b{font-size:12px; white-space:nowrap} .brand svg{width:24px}
+  .pill{padding:6px 9px; font-size:10.5px} .conn{font-size:9px} }
+#banner.busy{background:linear-gradient(90deg,#2b2412,#3a2f12); color:var(--amber); border:1px solid var(--amber)}
+
+/* ---------- TUNE tabs ---------- */
+.tabs{display:flex; gap:6px; padding:9px 14px; overflow-x:auto; -webkit-overflow-scrolling:touch;
+      border-bottom:1px solid var(--line); scrollbar-width:none; flex:0 0 auto}
+.tabs::-webkit-scrollbar{display:none}
+.tab{-webkit-appearance:none; appearance:none; flex:1 0 auto; min-height:36px; padding:6px 14px;
+     font-family:var(--sans); font-weight:700; font-size:12.5px; letter-spacing:.04em; cursor:pointer;
+     color:var(--dim); background:transparent; border:1px solid var(--line); border-radius:999px}
+.tab.on{color:var(--void); background:var(--amber); border-color:var(--amber)}
+.tab:focus-visible{outline:2px solid var(--amber); outline-offset:2px}
+.tab .pip{display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--alarm); margin-left:6px; vertical-align:middle}
+
+/* option cards (policy picker) */
+.opt{-webkit-appearance:none; appearance:none; width:100%; text-align:left; cursor:pointer;
+     font-family:var(--mono); color:var(--ink); background:var(--well); border:1px solid var(--line);
+     border-radius:11px; padding:10px 11px; margin-top:8px; display:grid;
+     grid-template-columns:18px 1fr auto; gap:3px 9px; align-items:center}
+.opt .radio{width:16px; height:16px; border-radius:50%; border:2px solid var(--dim); grid-row:1/3; align-self:start; margin-top:1px}
+.opt b{font-family:var(--sans); font-weight:700; font-size:13.5px}
+.opt .tag{font-size:9.5px; letter-spacing:.12em; color:var(--dim)}
+.opt .sum{grid-column:2/-1; font-size:11px; line-height:1.45; color:var(--dim)}
+.opt.on{border-color:var(--amber); background:linear-gradient(180deg,#33260d,#241b0a)}
+.opt.on .radio{border-color:var(--amber); background:radial-gradient(circle,var(--amber) 0 40%,transparent 46%)}
+.opt.on .tag{color:var(--amber)}
+.opt.wait{border-color:var(--amber-hot)} .opt.wait .tag{color:var(--amber-hot)}
+.opt.bad{opacity:.5; pointer-events:none} .opt.bad .sum{color:#ffb3aa}
+.opt:focus-visible{outline:2px solid var(--amber); outline-offset:2px}
+
+/* segmented control */
+.seg{display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:0; margin:8px 0 4px;
+     border:1px solid var(--line); border-radius:10px; overflow:hidden}
+.seg button{-webkit-appearance:none; appearance:none; min-height:40px; border:0; cursor:pointer;
+     background:var(--well); color:var(--dim); font-family:var(--sans); font-weight:700; font-size:12.5px}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button.on{background:var(--amber); color:var(--void)}
+.seg button:focus-visible{outline:2px solid var(--ink); outline-offset:-3px}
+
+/* tilt gauge: how close the duck comes to the fall thresholds */
+.gauge{position:relative; height:26px; margin:14px 0 20px; border-radius:6px; background:#0e0b07; border:1px solid var(--line)}
+.gauge .now{position:absolute; left:0; top:0; bottom:0; width:0; border-radius:5px 0 0 5px;
+            background:linear-gradient(90deg,#6b4a12,var(--amber)); transition:width .2s linear}
+.gauge .peak{position:absolute; top:-4px; bottom:-4px; width:2px; background:var(--ink); left:0; transition:left .2s}
+.gauge .mk{position:absolute; top:0; bottom:0; width:0; border-left:1.5px dashed var(--alarm)}
+.gauge .mk span{position:absolute; top:100%; left:0; transform:translateX(-50%); margin-top:3px;
+                font-size:9px; color:var(--dim); white-space:nowrap}
+.gauge .mk.soft{border-left-color:var(--dim)}
+.kv{display:grid; grid-template-columns:1fr auto; gap:6px 10px; font-size:12px; margin:8px 0 2px}
+.kv span{color:var(--dim)} .kv b{font-weight:400; color:var(--ink); text-align:right; font-variant-numeric:tabular-nums}
+.kv b.warn{color:var(--amber-hot)} .kv b.bad{color:var(--alarm)} .kv b.good{color:var(--ok)}
+
+/* per-servo voltage */
+.volts{display:grid; grid-template-columns:auto 1fr auto; gap:5px 9px; align-items:center; font-size:11px; margin-top:8px}
+.volts .nm{color:var(--dim)} .volts .v{color:var(--ink); font-variant-numeric:tabular-nums}
+.volts .bar{height:7px; border-radius:4px; background:#0e0b07; border:1px solid var(--line); overflow:hidden}
+.volts .bar i{display:block; height:100%; background:var(--amber)}
+.volts .bar.low i{background:var(--alarm)} .volts .v.low{color:var(--alarm)} .volts .nm.low{color:#ffb3aa}
+.volts .grp{grid-column:1/-1; font-size:9.5px; letter-spacing:.16em; color:var(--amber); margin-top:6px}
+
+/* recordings */
+.logs{margin-top:8px; display:flex; flex-direction:column; gap:6px}
+.log{display:grid; grid-template-columns:1fr auto; gap:2px 10px; align-items:center; padding:8px 10px;
+     border:1px solid var(--line); border-radius:9px; background:var(--well); color:var(--ink); text-decoration:none}
+.log b{font-weight:400; font-size:12px} .log span{font-size:10px; color:var(--dim)}
+.log i{font-style:normal; color:var(--amber); font-size:11px; grid-row:1/3; grid-column:2}
+.row2{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px}
+.btn.tbtn{min-height:44px; flex-direction:row; gap:8px; font-size:12px; letter-spacing:.1em; border-color:var(--amber); color:var(--amber)}
+.btn.tbtn.rec{border-color:var(--alarm); color:#ffcfc7}
+.btn.tbtn[disabled]{opacity:.4; pointer-events:none}
+details.more{margin-top:6px} details.more summary{list-style:none; cursor:pointer; font-size:11.5px; color:var(--amber);
+     padding:9px 0 3px; display:flex; align-items:center; gap:6px}
+details.more summary::-webkit-details-marker{display:none}
+details.more summary::before{content:"+"; display:inline-flex; width:16px; height:16px; align-items:center; justify-content:center;
+     border:1px solid var(--amber); border-radius:50%; font-size:12px; line-height:1}
+details.more[open] summary::before{content:"−"}
+.tsec .sub{font-size:11px; color:var(--dim); line-height:1.45; margin:0 0 4px}
+.steps{margin:6px 0 0; padding-left:18px; font-size:11.5px; line-height:1.6; color:var(--dim)}
+.steps b{color:var(--ink); font-weight:400}
 </style>
 
 <div id="app">
@@ -288,7 +402,7 @@ input[type=range]::-moz-range-thumb{width:22px; height:22px; border:none; border
     </div>
     <div class="status">
       <div class="conn" id="conn"><span class="dot"></span><b id="connTxt">LINK</b></div>
-      <button class="pill tunebtn" id="tuneBtn" aria-label="tuning panel">TUNE</button>
+      <button class="pill tunebtn" id="tuneBtn" aria-label="settings">TUNE</button>
       <span class="pill" id="mode">WALK</span>
     </div>
   </header>
@@ -327,7 +441,17 @@ input[type=range]::-moz-range-thumb{width:22px; height:22px; border:none; border
     </div>
   </section>
 
+  <div id="strip" class="hidden">
+    <button class="chip pol" id="polChip" aria-label="change the walk policy"><b id="polName">–</b><i>CHANGE</i></button>
+    <button class="chip mark" id="markBtn" aria-label="save the last seconds to a recording"><span class="rd"></span>MARK</button>
+  </div>
+
   <div id="banner"></div>
+  <div id="note" role="status"></div>
+  <div id="fallbar">
+    <button class="btn act go" id="getupBtn">GET UP</button>
+    <button class="btn act" id="resumeBtn">RESUME</button>
+  </div>
 
   <main id="controls">
     <div class="sticks">
@@ -348,22 +472,6 @@ input[type=range]::-moz-range-thumb{width:22px; height:22px; border:none; border
     <div class="pads" id="pads"></div>
     <div class="lb-row" id="lbRow"></div>
 
-    <div class="trim hidden" id="trim">
-      <span class="lbl">IMU trim</span>
-      <div class="trim-ax"><span class="lbl tap" id="trimPitchLbl">pitch <i class="ic">i</i></span>
-        <button class="btn tb" id="trimPitchDn" aria-label="pitch down">−</button>
-        <b class="num" id="trimPitch">--</b><span class="lbl">°</span>
-        <button class="btn tb" id="trimPitchUp" aria-label="pitch up">+</button></div>
-      <div class="trim-ax"><span class="lbl tap" id="trimRollLbl">roll <i class="ic">i</i></span>
-        <button class="btn tb" id="trimRollDn" aria-label="roll down">−</button>
-        <b class="num" id="trimRoll">--</b><span class="lbl">°</span>
-        <button class="btn tb" id="trimRollUp" aria-label="roll up">+</button></div>
-      <button class="btn tb reset" id="trimReset" aria-label="reset trim to zero">↺</button>
-      <button class="btn tb save" id="trimSave">SAVE</button>
-      <div class="thelp hidden" id="hlp_pitch" style="flex-basis:100%">Cancels a forward/back lean the IMU reads at rest (radians). Nudge <b>+</b> if the duck tips/falls backward, <b>−</b> if it tips forward — until it stands square. Then validate by walking; if it walks worse, set it back.</div>
-      <div class="thelp hidden" id="hlp_roll" style="flex-basis:100%">Cancels a left/right lean the IMU reads at rest (radians). Nudge <b>+</b> if it leans/falls to one side, <b>−</b> for the other. Small steps; check by walking. Roll should sit near 0 on a symmetric duck.</div>
-    </div>
-
     <div class="ant" id="ant">
       <div class="slot">
         <div class="hd"><span class="lbl">Antenna L</span><b id="antLv" class="num">0</b></div>
@@ -380,9 +488,10 @@ input[type=range]::-moz-range-thumb{width:22px; height:22px; border:none; border
 
 <div id="tune" class="tune" aria-hidden="true">
   <div class="tune-hd">
-    <b id="tuneTitle">TUNING</b>
+    <b id="tuneTitle">DUCK SETTINGS</b>
     <button class="btn tb" id="tuneClose" aria-label="close">✕</button>
   </div>
+  <div class="tabs" id="tuneTabs" role="tablist"></div>
   <div class="tune-body" id="tuneBody"></div>
 </div>
 
@@ -544,8 +653,9 @@ function poll(){
     lastOk=performance.now(); render(s);
   }).catch(()=>{}).finally(()=>clearTimeout(t));
 }
-/* IMU-trim card: nudge +/- (radians) and Save. Wired once (static markup). */
+/* IMU-trim card (settings → Walk): nudge +/- (radians) and Save. Wired per render. */
 function wireTrim(){
+  if(!$("trimPitchUp")) return;
   const nudge=(axis,delta)=>{ post("/api/trim",{axis,delta}); buzz(8); };
   $("trimPitchUp").addEventListener("click",()=>nudge("pitch",TRIM_STEP));
   $("trimPitchDn").addEventListener("click",()=>nudge("pitch",-TRIM_STEP));
@@ -558,8 +668,6 @@ function wireTrim(){
     l.addEventListener("click",()=>{ const hid=h.classList.toggle("hidden"); l.classList.toggle("open",!hid); buzz(5); }); };
   tHelp("trimPitchLbl","hlp_pitch"); tHelp("trimRollLbl","hlp_roll");
 }
-wireTrim();
-
 setInterval(poll,POLL_MS); poll();
 
 /* connection watchdog — drives the link light independent of the poll */
@@ -577,11 +685,35 @@ setInterval(()=>{
 function setBanner(s){
   const b=$("banner");
   let cls="", txt="";
-  if(s.fallen){cls="fall"; txt="⚠ FALLEN — CHECK THE DUCK";}
-  else if(s.paused){cls="pause"; txt="❙❙ PAUSED";}
-  else if(s.message){cls="msg"; txt=s.message;}
+  const act=s.activity, BUSY={getup:"GETTING UP",reflex:"SOFT LANDING",recover:"BACK TO STANCE",
+    balance:"BALANCING",switch:"SWITCHING POLICY"};
+  if(BUSY[act]){cls="busy"; txt=BUSY[act];}
+  else if(s.fallen){cls="fall"; txt="⚠ FALLEN";}
+  else if(s.paused){cls="pause"; txt=act==="stance"?"❙❙ HOLDING STANCE":"❙❙ PAUSED";}
   b.className = cls?("show "+cls):"";
   b.textContent=txt;
+  // one line from the duck about what just happened or what to do next
+  const n=$("note"); n.textContent=s.message||""; n.classList.toggle("show",!!s.message);
+  // after a fall: the two things you can do, as buttons
+  const walk=s.mode!=="head_puppet", gu=s.getup||{}, fb=$("fallbar"), g=$("getupBtn"), r=$("resumeBtn");
+  const running=act==="getup", show=walk&&(running||(s.fallen&&!BUSY[act]));
+  fb.classList.toggle("show",show);
+  if(show){
+    const offer=running||!!gu.enabled;
+    g.style.display=offer?"":"none"; r.style.display=running?"none":"";
+    fb.classList.toggle("one",running||!offer);
+    g.textContent=running?"■ STOP":(gu.ready?"GET UP":"GET UP · LOADING");
+    g.classList.toggle("stop",running); g.classList.toggle("go",!running);
+    g.disabled=!running&&!gu.ready;
+    r.textContent="RESUME";
+  }
+  // policy chip + recorder mark
+  const st=$("strip"), p=s.policy;
+  st.classList.toggle("hidden",!walk||!p);
+  if(walk&&p){ const cur=(p.slots||[]).find(x=>x.id===p.active), chip=$("polChip");
+    const busy=p.state==="loading"||p.state==="ready";
+    $("polName").textContent=busy?"Switching policy…":(cur?cur.name:p.active);
+    chip.classList.toggle("busy",busy); }
 }
 
 function render(s){
@@ -592,6 +724,7 @@ function render(s){
     p.classList.toggle("head",s.mode==="head_puppet");
     if(tuneOpen) openTune();   // rebuild the tune panel for the new mode
   }
+  updateTuneLive(s);
 
   setBanner(s);
 
@@ -649,43 +782,72 @@ function render(s){
     }
   }
 
-  // IMU trim card: walk-mode only; show live values in degrees
-  $("trim").classList.toggle("hidden", s.mode==="head_puppet");
-  const tr=s.imu_trim, DEG=180/Math.PI;
-  if(tr && tr.pitch!=null){
-    $("trimPitch").textContent=(tr.pitch>=0?"+":"")+(tr.pitch*DEG).toFixed(2);
-    $("trimRoll").textContent =(tr.roll>=0?"+":"")+(tr.roll*DEG).toFixed(2);
-  }
 }
 function setActive(id,on){ const e=$(id); if(e) e.classList.toggle("active",!!on); }
 function setFeat(id,on){ const e=$(id); if(e){ e.classList.toggle("disabled",!on); if(!on) e.setAttribute("aria-disabled","true"); } }
 function setRec(id,on){ const e=$(id); if(e) e.classList.toggle("rec",!!on); }
 function setPlay(id,on){ const e=$(id); if(e) e.classList.toggle("play",!!on); }
 
-/* ================= TUNE panel (walk tuning · camera · antennas) ================= */
-const WALK_CONTROLS=[
+/* ================= TUNE sheet: tabs for policy · walk · safety · health · ears ================= */
+const STRIDE_CONTROLS=[
   {k:"action_scale",name:"Action scale",min:0,max:0.6,step:0.01,
-   help:"How far the policy swings the legs from the standing pose each step. <b>Lower</b> = smaller, calmer steps — steadier but less lively. <b>Higher</b> = bigger, springier strides — livelier but can get twitchy/unstable. Eases in smoothly, no jerk."},
-  {k:"gait_offset",name:"Gait freq offset",min:-0.5,max:0.5,step:0.01,
-   help:"Nudges the stepping cadence. <b>Lower</b> (more negative) = slower steps; <b>higher</b> = faster steps. Tune until the feet stop scuffing or stamping and the rhythm looks natural."},
-  {k:"max_motor_velocity_rad_s",name:"Max motor vel",min:0.5,max:12,step:0.1,unit:"rad/s",
-   help:"Speed limit for each leg joint per tick (only bites when Velocity clip is ON). <b>Lower</b> = gentler, smoother, but can lag fast moves. <b>Higher</b> = allows quicker joint moves."},
-  {k:"velocity_clip",name:"Velocity clip",type:"tgl",
-   help:"Caps how far any joint can jump in one control tick — a safety net against a policy spike snapping a servo. <b>On</b> = smoother & safer; <b>off</b> = raw policy output. Uses the Max motor vel limit above."},
-  {k:"governor_enabled",name:"Stability governor",type:"tgl",
-   help:"Near-fall safety layer: as the duck starts to tip it eases off your drive commands so it can recover in place instead of driving itself over. <b>On</b> = safer on rough ground; it rarely acts on flat ground."},
-  {k:"governor_tilt_lo_deg",name:"Gov tilt lo",min:0,max:45,step:0.5,unit:"°",
-   help:"Lean angle where the governor STARTS helping. <b>Lower</b> = reacts earlier (more cautious); <b>higher</b> = waits for a bigger lean before stepping in."},
-  {k:"governor_tilt_hi_deg",name:"Gov tilt hi",min:0,max:60,step:0.5,unit:"°",
-   help:"Lean angle for FULL slow-down. <b>Lower</b> = clamps down hard sooner; <b>higher</b> = only fully backs off at a big lean."},
-  {k:"governor_rate_lo",name:"Gov rate lo",min:0,max:20,step:0.1,
-   help:"How fast it is tipping (rad/s) where helping STARTS. <b>Lower</b> = reacts to gentle wobble; <b>higher</b> = ignores small wobbles."},
-  {k:"governor_rate_hi",name:"Gov rate hi",min:0,max:30,step:0.1,
-   help:"Tip speed for FULL slow-down. <b>Lower</b> = strong reaction to fast tips sooner; <b>higher</b> = only on very fast tips."},
-  {k:"governor_floor",name:"Gov floor speed",min:0,max:1,step:0.05,
-   help:"Slowest the governor will throttle your drive to (0–1). <b>Lower</b> = can nearly stop the duck when tipping (max caution); <b>higher</b> = keeps more of your speed while it helps."},
-  {k:"governor_smooth",name:"Gov smoothing",min:0.05,max:1,step:0.05,
-   help:"How snappily the governor reacts. <b>Lower</b> = smoother, less chatter but slower; <b>higher</b> = quicker response but can jitter."},
+   help:"How far the policy swings the legs from the standing pose each step. <b>Lower</b> = smaller, calmer steps. <b>Higher</b> = bigger, livelier strides that can get twitchy. Changes ease in, no jerk."},
+  {k:"gait_offset",name:"Gait speed offset",min:-0.5,max:0.5,step:0.01,
+   help:"Nudges the stepping cadence. <b>Lower</b> = slower steps, <b>higher</b> = faster. Tune until the feet stop scuffing or stamping."},
+];
+const SMOOTH_CONTROLS=[
+  {k:"velocity_clip",name:"Joint speed limit",type:"tgl",
+   help:"Caps how far any joint may move in one control tick, so a spike from the policy cannot snap a servo. Uses the limit below."},
+  {k:"max_motor_velocity_rad_s",name:"Max joint speed",min:0.5,max:12,step:0.1,unit:"rad/s",
+   help:"The speed limit itself. <b>Lower</b> = gentler but can lag quick moves. Only acts while the joint speed limit is on."},
+  {k:"slew_enabled",name:"Ramp the sticks",type:"tgl",
+   help:"Turns a slammed stick into a short ramp, so the gait changes gradually instead of in one step. Stopping stays quick. New: try it and compare."},
+  {k:"slew_lin_accel",name:"Drive ramp",min:0.05,max:3,step:0.05,unit:"m/s²",
+   help:"How quickly forward and sideways speed may build up. 0.3 reaches full speed in half a second."},
+  {k:"slew_ang_accel",name:"Turn ramp",min:0.5,max:30,step:0.5,unit:"rad/s²",
+   help:"How quickly the turn rate may build up."},
+];
+const GOV_CONTROLS=[
+  {k:"governor_tilt_lo_deg",name:"Starts at lean",min:0,max:45,step:0.5,unit:"°",
+   help:"Lean angle where the governor starts easing your drive commands."},
+  {k:"governor_tilt_hi_deg",name:"Full effect at lean",min:0,max:60,step:0.5,unit:"°",
+   help:"Lean angle where it slows you down fully."},
+  {k:"governor_rate_lo",name:"Starts at tip speed",min:0,max:20,step:0.1,unit:"rad/s",
+   help:"How fast the duck must be tipping before the governor starts."},
+  {k:"governor_rate_hi",name:"Full effect at tip speed",min:0,max:30,step:0.1,unit:"rad/s",
+   help:"Tip speed for the full slow-down."},
+  {k:"governor_floor",name:"Slowest it lets you go",min:0,max:1,step:0.05,
+   help:"Share of your commanded speed that always gets through (0 = it may stop the duck, 1 = it never slows you)."},
+  {k:"governor_smooth",name:"Reaction speed",min:0.05,max:1,step:0.05,
+   help:"<b>Lower</b> = smoother but slower to react. <b>Higher</b> = quicker, can jitter."},
+];
+const REFLEX_CONTROLS=[
+  {k:"min_tilt_deg",name:"Earliest lean",min:5,max:60,step:1,unit:"°",
+   help:"The reflex never fires below this lean, however fast the duck tips. Keep it above the peak lean you see in normal walking."},
+  {k:"predict_deg",name:"Predicted lean",min:15,max:90,step:1,unit:"°",
+   help:"Fires when the lean, extended by the tipping speed over the look-ahead, passes this. <b>Lower</b> = earlier, more false alarms."},
+  {k:"horizon_s",name:"Look-ahead",min:0,max:0.6,step:0.01,unit:"s",
+   help:"How far ahead the tipping speed is projected."},
+  {k:"hard_deg",name:"Always at lean",min:15,max:90,step:1,unit:"°",
+   help:"Fires at this lean even when tipping slowly."},
+  {k:"tuck_s",name:"Fold time",min:0,max:0.5,step:0.01,unit:"s",
+   help:"How long the legs fold before the joints go soft. The floor comes about 0.15 s after the trigger, so keep it short."},
+  {k:"soft_kp",name:"Soft stiffness, legs",min:0,max:32,step:1,
+   help:"Servo stiffness on impact (walking uses 30). <b>Lower</b> = the joints give more."},
+  {k:"soft_kp_head",name:"Soft stiffness, head",min:0,max:32,step:1,
+   help:"Same for the neck and head (walking uses 8)."},
+];
+const GETUP_CONTROLS=[
+  {k:"blend",name:"Smoothing",min:0.1,max:1,step:0.05,
+   help:"Share of each new target that is applied per tick. 0.5 is what worked on a real duck; 1 = raw policy output."},
+  {k:"soft_s",name:"Gentle start",min:0,max:3,step:0.1,unit:"s",
+   help:"For this long the joints move at a third of full speed. All servos starting at full speed can sag the battery."},
+  {k:"stand_hold_s",name:"Standing must hold",min:0.1,max:3,step:0.1,unit:"s",
+   help:"How long the duck must be upright with its legs near the stance before it counts as standing."},
+  {k:"timeout_s",name:"Give up after",min:2,max:30,step:1,unit:"s",
+   help:"An attempt that has not stood up by then stops and the joints go soft."},
+  {k:"balance_s",name:"Balance afterwards",min:0,max:10,step:0.5,unit:"s",
+   help:"After standing up, the walk policy balances this long with the sticks ignored."},
 ];
 const CAM_CONTROLS=[
   {k:"ae",name:"Auto exposure",type:"tgl",
@@ -706,7 +868,11 @@ const CAM_CONTROLS=[
    help:"Edge crispness. <b>Higher</b> = crisper (can look harsh); <b>lower</b> = softer."},
 ];
 const CAM_DEFAULTS={ae:true,awb:true,exposure:10000,gain:1,brightness:0,contrast:1,saturation:1,sharpness:1};
+const JOINT_GROUPS=[["Left leg",["left_hip_yaw","left_hip_roll","left_hip_pitch","left_knee","left_ankle"]],
+  ["Head",["neck_pitch","head_pitch","head_yaw","head_roll"]],
+  ["Right leg",["right_hip_yaw","right_hip_roll","right_hip_pitch","right_knee","right_ankle"]]];
 
+const esc=t=>String(t==null?"":t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const decs=step=>{const s=String(step),i=s.indexOf(".");return i<0?0:s.length-i-1;};
 function fmtVal(spec,v){ const d=spec.dec!=null?spec.dec:decs(spec.step);
   let s=Number(v).toFixed(d); if(spec.min<0&&v>=0)s="+"+s; return s+(spec.unit?(" "+spec.unit):""); }
@@ -725,56 +891,178 @@ function toggleRow(group,spec,on){ const id=`tc_${group}_${spec.k}`;
   return `<div class="trow tog">${nameCell(spec)}
     <button class="btn tgl${on?" on":""}" id="${id}" data-group="${group}" data-key="${spec.k}" data-on="${on?1:0}">${on?"ON":"OFF"}</button>
     ${helpCell(spec)}</div>`; }
+function rows(group,specs,read){ return specs.map(spec=>{ const v=read(spec.k);
+  return spec.type==="tgl"?toggleRow(group,spec,!!v):sliderRow(group,spec,v); }).join(""); }
 
-function readWalk(k,wp,gov){
+function readWalk(k,s){ const wp=s.walk_params||{}, gov=wp.governor||{}, sl=s.command_slew||{};
   if(k==="action_scale") return wp.action_scale_target!=null?wp.action_scale_target:(wp.action_scale!=null?wp.action_scale:0.25);
   if(k.indexOf("governor_")===0){ const gk=k.slice(9);
     if(gk==="enabled") return !!gov.enabled; return gov[gk]!=null?gov[gk]:0; }
+  if(k.indexOf("slew_")===0){ const sk=k.slice(5); return sl[sk]!=null?sl[sk]:(sk==="enabled"?false:0); }
   return wp[k]!=null?wp[k]:0;
 }
-function antennaSection(s){ const on=!!s.antenna_anim, sync=!!s.antenna_sync;
+
+/* ---- panes ---- */
+function panePolicy(s){
+  return `<div class="tsec"><span class="lbl">Walk policy</span>
+    <div class="sub">The network that turns your stick into steps. Pick one; the duck stands still for a moment, switches, and remembers the choice for the next start.</div>
+    <div id="polList"></div></div>
+    <div class="tsec"><span class="lbl">Comparing two policies</span>
+    <ol class="steps"><li>Start a <b>take</b> in Health and drive a fixed route.</li>
+    <li>Switch policy here, record the same route again.</li>
+    <li>Download both takes and compare them with <b>analyze_falls.py</b>.</li></ol></div>`;
+}
+function paneWalk(s){
+  const gov=((s.walk_params||{}).governor)||{};
+  return `<div class="tsec"><span class="lbl">Stride</span>
+      <div class="sub">These two belong to the policy. Each policy keeps its own values.</div>
+      ${rows("walk",STRIDE_CONTROLS,k=>readWalk(k,s))}</div>
+    <div class="tsec"><span class="lbl">Smoothing</span>
+      ${rows("walk",SMOOTH_CONTROLS,k=>readWalk(k,s))}</div>
+    <div class="tsec"><span class="lbl">Stability governor</span>
+      <div class="sub">Eases your drive commands when the duck starts to tip, so it can catch itself.</div>
+      ${toggleRow("walk",{k:"governor_enabled",name:"Governor"},!!gov.enabled)}
+      <details class="more"><summary>Fine tuning</summary>${rows("walk",GOV_CONTROLS,k=>readWalk(k,s))}</details></div>
+    <div class="tsec">
+      <button class="btn tsave" data-save="walk">SAVE WALK TUNING TO DUCK</button>
+      <button class="btn treset" data-reset="walk">↺ RESET TO KNOWN-GOOD DEFAULTS</button>
+      <div class="thint">Edits apply at once. Save keeps them across restarts.</div></div>
+    <div class="tsec"><span class="lbl">Calibration</span>
+      <div class="sub">Falls mostly one way? Nudge the motion sensor's trim until the duck stands square. On the gamepad: hold RB and use the D-pad.</div>
+      ${TRIM_CARD}
+      <div class="sub" style="margin-top:12px">Leaning or walking crooked? Tune each joint's zero while the duck stands in front of you.</div>
+      <a class="btn tlink" href="/offsets">JOINT OFFSETS</a></div>`;
+}
+function paneSafety(s){
+  const sf=s.safety||{}, cfg=sf.config||{}, gu=s.getup||{}, gc=gu.config||{};
+  const mode=sf.mode||"observe";
+  const seg=["off","observe","active"].map(m=>`<button data-val="${m}" class="${m===mode?"on":""}">${m[0].toUpperCase()+m.slice(1)}</button>`).join("");
+  const gslots=((s.policy||{}).slots||[]).filter(x=>x.kind==="getup");
+  return `<div class="tsec"><span class="lbl">Soft landing</span>
+      <div class="sub">Notices a fall on the way down, stops the legs kicking and lets the joints go soft before the impact.</div>
+      <div class="seg" data-group="safety" data-key="mode">${seg}</div>
+      <div class="thint" id="sfModeHint"></div>
+      <div class="gauge" id="sfGauge"><div class="now"></div><div class="peak"></div>
+        <div class="mk soft" id="sfMkMin"><span>earliest</span></div>
+        <div class="mk" id="sfMkHard"><span>always</span></div></div>
+      <div class="kv">
+        <span>Lean now</span><b id="sfNow">–</b>
+        <span>Highest while walking</span><b id="sfPeak">–</b>
+        <span>Highest predicted</span><b id="sfPeakPred">–</b>
+        <span>Falls seen</span><b id="sfTrig">–</b>
+        <span>Last fired at</span><b id="sfLast">–</b></div>
+      <button class="btn treset" data-act="safety:reset_peaks">↺ CLEAR THE HIGHEST VALUES</button>
+      <details class="more"><summary>Thresholds</summary>${rows("safety",REFLEX_CONTROLS,k=>cfg[k]!=null?cfg[k]:0)}</details>
+      <button class="btn tsave" data-save="safety">SAVE SOFT LANDING TO DUCK</button>
+      <button class="btn treset" data-reset="safety">↺ RESET TO DEFAULTS</button></div>
+    <div class="tsec"><span class="lbl">Get up</span>
+      <div class="sub">A second policy that stands the duck up from lying face-down. Experimental: first runs on a soft surface, hand near the duck.</div>
+      ${toggleRow("getup",{k:"enabled",name:"Get-up available"},!!gu.enabled)}
+      ${toggleRow("getup",{k:"auto",name:"Start by itself after a fall",
+        help:"Off: you press GET UP. On: the duck tries on its own once it lies still, up to two attempts. It never starts while it is merely lifted."},!!gu.auto)}
+      <div class="kv"><span>Policy</span><b id="guState">–</b>
+        <span>Standing reference</span><b id="guRef">–</b>
+        <span>Last attempt</span><b id="guRun">–</b></div>
+      ${gslots.map(x=>`<button class="opt${x.id===gu.policy?" on":""}${x.usable?"":" bad"}" data-opt="getup:policy:${esc(x.id)}">
+        <span class="radio"></span><b>${esc(x.name)}</b><span class="tag">${x.id===gu.policy?"SELECTED":""}</span>
+        <span class="sum">${esc(x.usable?x.summary:x.error)}</span></button>`).join("")}
+      <details class="more"><summary>Standing reference (do this once per duck)</summary>
+        <div class="sub">The policy was trained with the motion sensor at a slightly different angle. Capturing what this duck reads while standing lets the runtime correct for it.</div>
+        <ol class="steps"><li>Put the duck on the floor and tap <b>Hold stance</b>.</li>
+          <li>Wait until it stands still, then tap <b>Capture</b>.</li></ol>
+        <div class="row2"><button class="btn tbtn" data-act="stance:hold">HOLD STANCE</button>
+          <button class="btn tbtn" data-act="getup:capture_reference">CAPTURE</button></div></details>
+      <details class="more"><summary>Fine tuning</summary>${rows("getup",GETUP_CONTROLS,k=>gc[k]!=null?gc[k]:0)}</details>
+      <button class="btn tsave" data-save="getup">SAVE GET-UP TO DUCK</button>
+      <button class="btn treset" data-reset="getup">↺ RESET TO DEFAULTS</button></div>`;
+}
+function paneHealth(s){
+  return `<div class="tsec"><span class="lbl">Recorder</span>
+      <div class="sub">The duck keeps the last 20 seconds of everything it measured. A fall saves them by itself; MARK saves them on demand; a take records until you stop it.</div>
+      <div class="row2"><button class="btn tbtn" data-act="recorder:mark">● MARK NOW</button>
+        <button class="btn tbtn" id="takeBtn">START A TAKE</button></div>
+      <div class="kv"><span>Saved this session</span><b id="bbSaved">–</b>
+        <span>Latest file</span><b id="bbLast">–</b></div>
+      <details class="more" id="logsBox"><summary>Recordings on the duck</summary>
+        <div class="logs" id="logList"><div class="thint">Loading…</div></div>
+        <button class="btn treset" id="logRefresh">↺ REFRESH THE LIST</button></details></div>
+    <div class="tsec"><span class="lbl">Control loop</span>
+      <div class="sub">The walk needs a fresh step every 20 ms. Late steps make a good policy stumble.</div>
+      <div class="kv"><span>Late steps, last minute</span><b id="lhLate">–</b>
+        <span>Slowest step</span><b id="lhWorst">–</b>
+        <span>Failed servo reads</span><b id="lhFail">–</b></div>
+      <button class="btn treset" data-act="safety:reset_peaks">↺ CLEAR THE COUNTERS</button></div>
+    <div class="tsec"><span class="lbl">Servo supply at rest</span>
+      <div class="sub">Read while paused. A servo well below the others points at a weak cable or plug on that leg. For the reading under load, run voltage_sag_test.py.</div>
+      <div class="volts" id="voltList"><div class="thint" style="grid-column:1/-1">Pause the duck to read the voltages.</div></div></div>`;
+}
+function paneEars(s){ const on=!!s.antenna_anim, sync=!!s.antenna_sync;
   return `<div class="tsec"><span class="lbl">Ear antennas</span>
     ${toggleRow("antenna",{k:"free_anim",name:"Free animation",
       help:"Gentle random idle wiggle when you're not holding the ears. <b>On</b> = the duck feels alive; <b>off</b> = ears rest still for precise hand control (via the triggers). Needs the pigpio jitter fix for steady ears."},on)}
     ${toggleRow("antenna",{k:"sync",name:"Sync ears (unison)",
       help:"<b>On</b> = both ears move together in unison; <b>off</b> = each ear wanders on its own (livelier, more independent)."},sync)}
-    <button class="btn treset" data-reset="antenna">↺ RESET ANTENNAS TO DEFAULTS</button>
-    <button class="btn tsave" data-save="antenna">SAVE ANTENNA MODE TO DUCK</button></div>`; }
+    <button class="btn tsave" data-save="antenna">SAVE ANTENNA MODE TO DUCK</button>
+    <button class="btn treset" data-reset="antenna">↺ RESET ANTENNAS TO DEFAULTS</button></div>`; }
+function paneCamera(s){
+  const cam=s.camera||{}, avail=!!cam.available, cc=cam.controls||{};
+  let html=`<div class="tsec"><span class="lbl">Camera</span>
+    <div class="camwrap"><span class="camstat" id="camStat">…</span><img id="camView" alt="camera preview"></div>
+    <div class="thint">${avail?"Live view — confirm the camera works, then tune it for the room. Turn Auto exposure off to set exposure &amp; gain by hand.":"No camera detected. Enable <b>camera</b> in duck_config and connect the picam, then restart."}</div>`;
+  if(avail){
+    html+=rows("camera",CAM_CONTROLS,k=>cc[k]!=null?cc[k]:CAM_DEFAULTS[k]);
+    html+=`<button class="btn tsave" data-save="camera">SAVE CAMERA TO DUCK</button>
+      <button class="btn treset" data-reset="camera">↺ RESET CAMERA TO DEFAULTS</button>`;
+  }
+  return html+`</div>`;
+}
+
+const TRIM_CARD=`<div class="trim" id="trim">
+      <span class="lbl">IMU trim</span>
+      <div class="trim-ax"><span class="lbl tap" id="trimPitchLbl">pitch <i class="ic">i</i></span>
+        <button class="btn tb" id="trimPitchDn" aria-label="pitch down">−</button>
+        <b class="num" id="trimPitch">--</b><span class="lbl">°</span>
+        <button class="btn tb" id="trimPitchUp" aria-label="pitch up">+</button></div>
+      <div class="trim-ax"><span class="lbl tap" id="trimRollLbl">roll <i class="ic">i</i></span>
+        <button class="btn tb" id="trimRollDn" aria-label="roll down">−</button>
+        <b class="num" id="trimRoll">--</b><span class="lbl">°</span>
+        <button class="btn tb" id="trimRollUp" aria-label="roll up">+</button></div>
+      <button class="btn tb reset" id="trimReset" aria-label="reset trim to zero">↺</button>
+      <button class="btn tb save" id="trimSave">SAVE</button>
+      <div class="thelp hidden" id="hlp_pitch" style="flex-basis:100%">Cancels a forward/back lean the IMU reads at rest (radians). Nudge <b>+</b> if the duck tips/falls backward, <b>−</b> if it tips forward — until it stands square. Then validate by walking; if it walks worse, set it back.</div>
+      <div class="thelp hidden" id="hlp_roll" style="flex-basis:100%">Cancels a left/right lean the IMU reads at rest (radians). Nudge <b>+</b> if it leans/falls to one side, <b>−</b> for the other. Small steps; check by walking. Roll should sit near 0 on a symmetric duck.</div>
+    </div>`;
+const PANES={policy:panePolicy,walk:paneWalk,safety:paneSafety,health:paneHealth,ears:paneEars,camera:paneCamera};
+const TAB_NAMES={policy:"Policy",walk:"Walk",safety:"Safety",health:"Health",ears:"Ears",camera:"Camera"};
+let curTab={walk:"policy",head_puppet:"camera"};
+try{ const t=JSON.parse(sessionStorage.getItem("duckTab")||"null"); if(t&&t.walk&&t.head_puppet) curTab=t; }catch(_){}
+function tabsFor(mode,s){
+  const ears=((s.features||{}).antennas)!==false;
+  const t = mode==="head_puppet" ? ["camera"] : ["policy","walk","safety","health"];
+  if(ears) t.push("ears"); return t;
+}
 
 function renderTune(mode){
-  const s=lastState||{}, body=$("tuneBody");
-  $("tuneTitle").textContent=(mode==="head_puppet"?"HEAD":"WALK")+" · TUNING";
-  let html="";
-  if(mode==="head_puppet"){
-    const cam=s.camera||{}, avail=!!cam.available, cc=cam.controls||{};
-    html+=`<div class="tsec"><span class="lbl">Camera</span>
-      <div class="camwrap"><span class="camstat" id="camStat">…</span><img id="camView" alt="camera preview"></div>
-      <div class="thint">${avail?"Live view — confirm the camera works, then tune it for the room. Turn Auto exposure off to set exposure &amp; gain by hand.":"No camera detected. Enable <b>camera</b> in duck_config and connect the picam, then restart."}</div>`;
-    if(avail){
-      CAM_CONTROLS.forEach(spec=>{ const v=cc[spec.k]!=null?cc[spec.k]:CAM_DEFAULTS[spec.k];
-        html+= spec.type==="tgl"?toggleRow("camera",spec,!!v):sliderRow("camera",spec,v); });
-      html+=`<button class="btn treset" data-reset="camera">↺ RESET CAMERA TO DEFAULTS</button>`;
-      html+=`<button class="btn tsave" data-save="camera">SAVE CAMERA TO DUCK</button>`;
-    }
-    html+=`</div>`+antennaSection(s);
-  }else{
-    const wp=s.walk_params||{}, gov=wp.governor||{};
-    html+=`<div class="tsec"><span class="lbl">Walk tuning</span>`;
-    WALK_CONTROLS.forEach(spec=>{ const v=readWalk(spec.k,wp,gov);
-      html+= spec.type==="tgl"?toggleRow("walk",spec,!!v):sliderRow("walk",spec,v); });
-    html+=`<div class="thint">Action scale ramps in smoothly (lower = steadier, higher = livelier). All edits are live; press Save to keep them across restarts.</div>
-      <button class="btn treset" data-reset="walk">↺ RESET TO KNOWN-GOOD DEFAULTS</button>
-      <button class="btn tsave" data-save="walk">SAVE WALK TUNING TO DUCK</button></div>
-      <div class="tsec"><span class="lbl">Calibration</span>
-      <div class="thint">Duck leaning or walking crooked? Tune each joint's zero while it stands in front of you.</div>
-      <a class="btn tlink" href="/offsets">JOINT OFFSETS &amp; IMU TRIM</a></div>`+antennaSection(s);
-  }
-  body.innerHTML=html;
+  const s=lastState||{}, body=$("tuneBody"), tabs=tabsFor(mode,s);
+  if(tabs.indexOf(curTab[mode])<0) curTab[mode]=tabs[0];
+  const tab=curTab[mode];
+  $("tuneTitle").textContent = mode==="head_puppet"?"HEAD SETTINGS":"DUCK SETTINGS";
+  $("tuneTabs").innerHTML=tabs.map(t=>`<button class="tab${t===tab?" on":""}" role="tab" aria-selected="${t===tab}" data-tab="${t}">${TAB_NAMES[t]}</button>`).join("");
+  $("tuneTabs").querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{
+    curTab[mode]=b.dataset.tab; try{sessionStorage.setItem("duckTab",JSON.stringify(curTab))}catch(_){}
+    buzz(6); stopCam(); renderTune(mode); body.scrollTop=0;
+    if(curTab[mode]==="camera" && ((lastState||{}).camera||{}).available) startCam(); }));
+  body.innerHTML=PANES[tab](s);
+  polSig="";
   wireTune();
+  updateTuneLive(s);
+  if(tab==="health") loadLogs();
 }
 
 function applyCamDisable(){ const ae=$("tc_camera_ae"); if(!ae)return; const on=ae.dataset.on==="1";
   ["exposure","gain"].forEach(k=>{ const el=$("tc_camera_"+k); if(el)el.closest(".trow").classList.toggle("dis",on); }); }
+
+function flash(btn,text){ const t=btn.textContent; btn.textContent=text; setTimeout(()=>{btn.textContent=t;},1200); }
 
 function wireTune(){
   const body=$("tuneBody");
@@ -792,25 +1080,138 @@ function wireTune(){
       post("/api/setting",{group:btn.dataset.group,key:btn.dataset.key,value:on});
       if(btn.dataset.group==="camera"&&btn.dataset.key==="ae") applyCamDisable(); });
   });
+  body.querySelectorAll('.seg').forEach(seg=>{
+    seg.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
+      seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); buzz(8);
+      post("/api/setting",{group:seg.dataset.group,key:seg.dataset.key,value:b.dataset.val}); }));
+  });
+  body.querySelectorAll('[data-act]').forEach(b=>{
+    b.addEventListener('click',()=>{ const [group,key]=b.dataset.act.split(":");
+      post("/api/setting",{group,key,value:true}); buzz(14); flash(b,"SENT ✓"); });
+  });
+  body.querySelectorAll('[data-opt]').forEach(b=>{
+    b.addEventListener('click',()=>{ const [group,key,value]=b.dataset.opt.split(":");
+      post("/api/setting",{group,key,value}); buzz(10);
+      b.parentElement.querySelectorAll('[data-opt]').forEach(x=>{ const on=x===b; x.classList.toggle("on",on);
+        const tag=x.querySelector(".tag"); if(tag) tag.textContent=on?"SELECTED":""; }); });
+  });
   body.querySelectorAll('[data-save]').forEach(b=>{
-    b.addEventListener('click',()=>{ post("/api/setting",{group:b.dataset.save,action:"save"}); buzz(20);
-      const t=b.textContent; b.textContent="SAVED ✓"; setTimeout(()=>{b.textContent=t;},1200); });
+    b.addEventListener('click',()=>{ post("/api/setting",{group:b.dataset.save,action:"save"}); buzz(20); flash(b,"SAVED ✓"); });
   });
   body.querySelectorAll('[data-reset]').forEach(b=>{
     b.addEventListener('click',()=>{ post("/api/setting",{group:b.dataset.reset,action:"reset"}); buzz(20);
       b.textContent="↺ RESETTING…";
-      // give the loop a couple of ticks to apply, then rebuild the panel from the new
-      // state; if it's the camera panel, restart the live preview it just rebuilt.
+      // give the loop a couple of ticks to apply, then rebuild the pane from the new
+      // state; if it's the camera pane, restart the live preview it just rebuilt.
       setTimeout(()=>{ if(tuneOpen){ renderTune(curMode);
         const cam=(lastState&&lastState.camera)||{};
-        if(curMode==="head_puppet" && cam.available) startCam(); } }, 500); });
+        if(curMode==="head_puppet" && curTab.head_puppet==="camera" && cam.available) startCam(); } }, 500); });
   });
   // tap a control name (ⓘ) to reveal/hide its explanation
   body.querySelectorAll('.trow .name.tap').forEach(n=>{
     const help=n.parentElement.querySelector('.thelp'); if(!help) return;
     n.addEventListener('click',()=>{ const hid=help.classList.toggle('hidden'); n.classList.toggle('open',!hid); buzz(5); });
   });
+  const take=$("takeBtn");
+  if(take) take.addEventListener("click",()=>{ const on=!take.classList.contains("rec");
+    post("/api/setting",{group:"recorder",key:"take",value:on}); buzz(14);
+    if(!on) setTimeout(loadLogs,1500); });
+  const lr=$("logRefresh"); if(lr) lr.addEventListener("click",()=>{ buzz(6); loadLogs(); });
+  wireTrim();
   applyCamDisable();
+}
+
+/* recordings list: fetched when the Health tab opens (not polled) */
+function logLabel(name){ const m=/^(\d{4})(\d\d)(\d\d)_(\d\d)(\d\d)(\d\d)_(.+)\.npz$/.exec(name);
+  return m?{what:m[7].replace(/_/g," "),when:`${m[3]}.${m[2]}. ${m[4]}:${m[5]}:${m[6]}`}:{what:name,when:""}; }
+function loadLogs(){ const list=$("logList"); if(!list) return;
+  fetch("/api/logs").then(r=>r.json()).then(d=>{ const logs=d.logs||[];
+    list.innerHTML = logs.length ? logs.slice(0,40).map(l=>{ const lb=logLabel(l.name);
+      return `<a class="log" href="/api/logs/${encodeURIComponent(l.name)}" download="${esc(l.name)}">
+        <b>${esc(lb.what)}</b><i>SAVE ↓</i><span>${esc(lb.when)} · ${(l.bytes/1024).toFixed(0)} kB</span></a>`; }).join("")
+      : `<div class="thint">Nothing recorded yet. Tap MARK NOW, or let the duck fall once.</div>`;
+  }).catch(()=>{ list.innerHTML=`<div class="thint">Could not load the list.</div>`; }); }
+
+/* policy cards: rebuilt only when something about them changed */
+let polSig="", liveActive=null;
+function updatePolicy(s){ const el=$("polList"); if(!el) return;
+  const p=s.policy||{}, slots=(p.slots||[]).filter(x=>x.kind==="walk");
+  const sig=JSON.stringify([p.active,p.pending,p.state,p.message,slots.map(x=>[x.id,x.usable])]);
+  if(sig===polSig) return; polSig=sig;
+  el.innerHTML=slots.map(x=>{ const on=x.id===p.active, wait=x.id===p.pending;
+    const tag = on?"RUNNING": wait?(p.state==="loading"?"LOADING…":"SWITCHING…"):"";
+    const sum = x.usable ? x.summary+(x.license?` Licence: ${x.license}.`:"") : `Not usable: ${x.error}`;
+    return `<button class="opt${on?" on":""}${wait?" wait":""}${x.usable?"":" bad"}" data-pol="${esc(x.id)}" aria-pressed="${on}">
+      <span class="radio"></span><b>${esc(x.name)}</b><span class="tag">${tag}</span>
+      <span class="sum">${esc(sum)}</span></button>`; }).join("")
+    + (p.state==="error"&&p.message?`<div class="thelp" style="margin-top:8px">${esc(p.message)}</div>`:"");
+  el.querySelectorAll("[data-pol]").forEach(b=>b.addEventListener("click",()=>{
+    if(b.classList.contains("on")) return;
+    post("/api/setting",{group:"policy",key:"active",value:b.dataset.pol}); buzz(14);
+    const tag=b.querySelector(".tag"); if(tag) tag.textContent="LOADING…"; b.classList.add("wait"); }));
+}
+
+/* live values inside the open sheet; never rebuilds a pane (sliders stay put) */
+const MODE_HINT={off:"Off. Only the old check runs: it pauses the duck once it has been lying for 2.5 s.",
+  observe:"Observe. Falls are detected and recorded, nothing about the motion changes. Use this to check the thresholds first.",
+  active:"Active. A detected fall stops the walk and softens the joints. Stand the duck up and press A to continue."};
+function setTxt(id,t,cls){ const e=$(id); if(!e) return; e.textContent=t; if(cls!=null) e.className=cls; }
+function updateTuneLive(s){
+  if(!tuneOpen) return;
+  // a policy swap changes the stride values: rebuild the Walk pane once to show them
+  const act=(s.policy||{}).active;
+  if(liveActive!==null && act!==liveActive && curTab[curMode||"walk"]==="walk"){ liveActive=act; renderTune(curMode||"walk"); return; }
+  liveActive=act;
+  updatePolicy(s);
+  const sf=s.safety;
+  if(sf && $("sfGauge")){
+    const cfg=sf.config||{}, pct=v=>clamp(v/90*100,0,100)+"%";
+    const g=$("sfGauge"); g.querySelector(".now").style.width=pct(s.tilt_deg||0);
+    g.querySelector(".peak").style.left=pct(sf.peak_tilt_deg||0);
+    $("sfMkMin").style.left=pct(cfg.min_tilt_deg||0); $("sfMkHard").style.left=pct(cfg.hard_deg||0);
+    setTxt("sfNow",(s.tilt_deg||0).toFixed(0)+"°");
+    const near=(sf.peak_tilt_deg||0)>=(cfg.min_tilt_deg||0);
+    setTxt("sfPeak",(sf.peak_tilt_deg||0).toFixed(0)+"° of "+(cfg.min_tilt_deg||0).toFixed(0)+"°",near?"warn":"");
+    setTxt("sfPeakPred",(sf.peak_predicted_deg||0).toFixed(0)+"° of "+(cfg.predict_deg||0).toFixed(0)+"°",
+           (sf.peak_predicted_deg||0)>=(cfg.predict_deg||0)*0.8?"warn":"");
+    setTxt("sfTrig",String(sf.triggers||0));
+    const lt=sf.last_trigger; setTxt("sfLast",lt?`${lt.tilt}° lean, ${lt.predicted}° predicted`:"none yet");
+    setTxt("sfModeHint",MODE_HINT[sf.mode]||"");
+  }
+  const gu=s.getup;
+  if(gu && $("guState")){
+    setTxt("guState", !gu.enabled?"switched off": gu.ready?"ready": (gu.note||"loading"), gu.enabled?(gu.ready?"good":"warn"):"");
+    setTxt("guRef", gu.has_reference?"captured":"not captured yet", gu.has_reference?"good":"warn");
+    const r=gu.run; setTxt("guRun", r?(r.phase==="run"?`running, ${r.elapsed_s} s`:(r.result||r.phase)):"none yet");
+  }
+  const bb=s.blackbox;
+  if(bb && $("bbSaved")){
+    setTxt("bbSaved", bb.enabled?String(bb.saved||0):"recorder is off");
+    setTxt("bbLast", bb.error?bb.error:(bb.last_file?logLabel(bb.last_file).what:"none yet"), bb.error?"bad":"");
+    const tk=$("takeBtn"); if(tk){ tk.classList.toggle("rec",!!bb.taking);
+      tk.textContent = bb.taking?`■ STOP · ${(bb.take_s||0).toFixed(0)} s`:"START A TAKE"; }
+  }
+  const tr=s.imu_trim, DEG=180/Math.PI;
+  if(tr && tr.pitch!=null && $("trimPitch")){
+    setTxt("trimPitch",(tr.pitch>=0?"+":"")+(tr.pitch*DEG).toFixed(2));
+    setTxt("trimRoll",(tr.roll>=0?"+":"")+(tr.roll*DEG).toFixed(2));
+  }
+  const lh=s.loop;
+  if(lh && $("lhLate")){
+    setTxt("lhLate",(lh.late_pct||0).toFixed(1)+" %", lh.late_pct>5?"bad":lh.late_pct>1?"warn":"good");
+    setTxt("lhWorst",(lh.worst_ms||0).toFixed(0)+" ms", lh.worst_ms>60?"bad":lh.worst_ms>30?"warn":"");
+    setTxt("lhFail",String(lh.read_failures||0), lh.read_failures>0?"warn":"");
+  }
+  const vl=$("voltList"), sv=s.servo_voltages;
+  if(vl && sv && Object.keys(sv).length){
+    const vals=Object.values(sv), top=Math.max.apply(null,vals), sig=JSON.stringify(sv);
+    if(vl.dataset.sig!==sig){ vl.dataset.sig=sig;
+      vl.innerHTML=JOINT_GROUPS.map(([g,js])=>`<div class="grp">${g}</div>`+js.filter(j=>sv[j]!=null).map(j=>{
+        const v=sv[j], low=v<top-0.4;
+        return `<span class="nm${low?" low":""}">${j.replace(/^(left|right)_/,"").replace(/_/g," ")}</span>
+          <span class="bar${low?" low":""}"><i style="width:${clamp((v-5.5)/(8.6-5.5)*100,3,100)}%"></i></span>
+          <span class="v${low?" low":""}">${v.toFixed(1)} V</span>`; }).join("")).join(""); }
+  }
 }
 
 /* live camera preview — poll a single JPEG a few times a second (robust over the
@@ -823,13 +1224,22 @@ function startCam(){ stopCam(); const img=$("camView"), stat=$("camStat"); if(!i
   tick(); }
 function stopCam(){ if(camTimer){clearTimeout(camTimer); camTimer=null;} const img=$("camView"); if(img){img.onload=null; img.onerror=null;} }
 
-function openTune(){ tuneOpen=true; stopCam(); renderTune(curMode||"walk");
+function openTune(tab){ tuneOpen=true; stopCam(); const mode=curMode||"walk";
+  if(tab) curTab[mode]=tab;
+  renderTune(mode);
   const t=$("tune"); t.classList.add("show"); t.setAttribute("aria-hidden","false");
   const cam=(lastState&&lastState.camera)||{};
-  if((curMode||"walk")==="head_puppet" && cam.available) startCam(); }
+  if(mode==="head_puppet" && curTab[mode]==="camera" && cam.available) startCam(); }
 function closeTune(){ tuneOpen=false; const t=$("tune"); t.classList.remove("show");
   t.setAttribute("aria-hidden","true"); stopCam(); }
 $("tuneBtn").addEventListener("click",()=>tuneOpen?closeTune():openTune());
+$("polChip").addEventListener("click",()=>{ buzz(8); openTune("policy"); });
+$("markBtn").addEventListener("click",()=>{ const b=$("markBtn");
+  post("/api/setting",{group:"recorder",key:"mark",value:true}); buzz(20);
+  b.classList.add("done"); setTimeout(()=>b.classList.remove("done"),1500); });
+$("getupBtn").addEventListener("click",()=>{ const running=(lastState||{}).activity==="getup"; buzz(20);
+  post("/api/setting",{group:"getup",key:running?"abort":"start",value:true}); });
+$("resumeBtn").addEventListener("click",()=>{ buzz(14); post("/api/button",{button:"A",action:"press"}); });
 $("tuneClose").addEventListener("click",closeTune);
 
 // guard against iOS rubber-band / double-tap zoom on the console

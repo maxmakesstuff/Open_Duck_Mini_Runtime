@@ -126,10 +126,10 @@ def discover(folders, stock_path, stock_name=None):
     """Return {id: Slot}. The stock slot (the --onnx_model_path file) comes first;
     then every *.json in `folders`, in name order. A duplicate id keeps the first."""
     slots = {}
-    name = stock_name or ("Stock walk (%s)" % os.path.basename(stock_path or "?"))
     slots[STOCK_ID] = Slot(
-        STOCK_ID, name, "walk", stock_path,
-        summary="The policy the walk script was started with.",
+        STOCK_ID, stock_name or "Stock walk", "walk", stock_path,
+        summary="The policy the walk script was started with (%s)."
+                % os.path.basename(stock_path or "none"),
         error="" if stock_path else "no start-up policy")
     for folder in folders:
         try:

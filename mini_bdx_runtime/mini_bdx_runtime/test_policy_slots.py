@@ -49,7 +49,8 @@ def test_stock_slot_always_exists_and_comes_first():
     slots = ps.discover([], "/x/BEST_WALK_ONNX_2.onnx")
     assert list(slots) == ["stock"]
     assert slots["stock"].usable and slots["stock"].kind == "walk"
-    assert "BEST_WALK_ONNX_2.onnx" in slots["stock"].name
+    assert slots["stock"].name == "Stock walk"
+    assert "BEST_WALK_ONNX_2.onnx" in slots["stock"].summary
 
 
 def test_discovers_manifests_in_name_order():

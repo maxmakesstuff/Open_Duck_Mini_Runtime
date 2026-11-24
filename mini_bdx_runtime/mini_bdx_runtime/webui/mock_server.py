@@ -24,6 +24,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(HERE))  # append: the stdlib still wins any name clash
 from offset_tuner import OffsetTuner  # noqa: E402
+import fall_reflex  # noqa: E402
+import getup as getup_mod  # noqa: E402
+import command_shaper  # noqa: E402
 
 INDEX = os.path.join(HERE, "index.html")
 OFFSETS_PAGE = os.path.join(HERE, "offsets.html")
@@ -53,6 +56,99 @@ WALK = {"action_scale": 0.23, "action_scale_target": 0.23, "velocity_clip": True
 CAM = {"ae": True, "awb": True, "exposure": 10000, "gain": 1.0, "brightness": 0.0,
        "contrast": 1.0, "saturation": 1.0, "sharpness": 1.0}
 ANT = {"free_anim": True, "sync": False}
+
+# ---- stability suite mocks (policy slots, soft landing, get-up, recorder, health) ----
+SLOTS = [
+    {"id": "stock", "name": "Stock walk", "kind": "walk",
+     "summary": "The policy the walk script was started with (BEST_WALK_ONNX_2.onnx).",
+     "license": "",
+     "usable": True, "error": "", "defaults": {}},
+    {"id": "dk5426-walk", "name": "dk5426 walker", "kind": "walk",
+     "summary": "Retrained walk. Tracks stick commands more closely in the authors' "
+                "simulation and has run on their real duck.", "license": "Apache-2.0",
+     "usable": True, "error": "", "defaults": {"action_scale": 0.25}},
+    {"id": "broken-walk", "name": "Half-copied walk", "kind": "walk", "summary": "",
+     "license": "", "usable": False, "error": "file missing: half_copied.onnx", "defaults": {}},
+    {"id": "dk5426-getup-real2", "name": "dk5426 get-up (real2, 80M)", "kind": "getup",
+     "summary": "Stands up from lying face-down. The file shown standing up a real duck "
+                "on Discord (2026-11-23).", "license": "Apache-2.0", "usable": True,
+     "error": "", "defaults": {}},
+    {"id": "dk5426-getup-real", "name": "dk5426 get-up (real, 41M)", "kind": "getup",
+     "summary": "Earlier get-up. Stood up 2 of 8 times in the authors' own robot logs.",
+     "license": "Apache-2.0", "usable": True, "error": "", "defaults": {}},
+]
+POLICY = {"active": "stock", "pending": None, "state": "idle", "message": "", "t": 0.0}
+REFLEX = fall_reflex.FallReflex()
+GETUP = getup_mod.clean_config({})
+GETUP_RUN = {"t0": None, "result": None}
+SLEW = command_shaper.clean_config({})
+BLACKBOX = {"saved": 0, "last_file": "", "take_t0": None}
+NOTE = {"text": "", "until": 0.0}
+FAKE_LOGS = [
+    {"name": "20261124_211502_fall.npz", "bytes": 148_220, "mtime": 0},
+    {"name": "20261124_210933_reflex_observed.npz", "bytes": 151_004, "mtime": 0},
+    {"name": "20261124_210210_take_dk5426-walk.npz", "bytes": 612_480, "mtime": 0},
+    {"name": "20261124_205847_take_stock.npz", "bytes": 598_112, "mtime": 0},
+]
+FORCE_FALL = {"v": None}   # --fallen: True = always fallen, False = never, None = cycle
+
+
+def note(text, seconds=5.0):
+    NOTE["text"], NOTE["until"] = text, time.time() + seconds
+
+
+def _suite_state(t, pitch, roll, fallen):
+    now = time.time()
+    if POLICY["pending"] and now - POLICY["t"] > 0.8:
+        POLICY["state"] = "ready"
+    if POLICY["pending"] and now - POLICY["t"] > 2.0:
+        name = next(x["name"] for x in SLOTS if x["id"] == POLICY["pending"])
+        POLICY.update(active=POLICY["pending"], pending=None, state="idle")
+        note(f"Now running: {name}")
+    tilt = math.hypot(pitch, roll)
+    REFLEX.peak_tilt_deg = max(REFLEX.peak_tilt_deg, min(tilt, 19.0))
+    REFLEX.peak_predicted_deg = max(REFLEX.peak_predicted_deg, min(tilt * 1.9, 38.0))
+    activity = "paused" if PAUSED["v"] else "walk"
+    run = None
+    if GETUP_RUN["t0"] is not None:
+        el = now - GETUP_RUN["t0"]
+        if el < 4.0:
+            activity, run = "getup", {"phase": "run", "result": "", "elapsed_s": round(el, 1),
+                                      "upright": round(min(1.0, el / 4), 2)}
+        elif el < 6.0:
+            activity, run = "balance", {"phase": "done", "result": "standing",
+                                        "elapsed_s": 4.0, "upright": 0.97}
+        else:
+            GETUP_RUN["t0"], GETUP_RUN["result"] = None, "standing"
+            FORCE_FALL["v"] = False
+            PAUSED["v"] = False
+    elif POLICY["pending"]:
+        activity = "switch" if not PAUSED["v"] else activity
+    if run is None and GETUP_RUN["result"]:
+        run = {"phase": "done", "result": GETUP_RUN["result"], "elapsed_s": 4.0, "upright": 0.97}
+    volts = {j: round(7.6 - 0.02 * i + (0.0 if j != "right_knee" else -0.7), 2)
+             for i, j in enumerate(TUNER.snapshot()["offsets"])} if PAUSED["v"] else {}
+    take = BLACKBOX["take_t0"]
+    return {
+        "activity": activity, "soft": bool(fallen and REFLEX.mode == "active"),
+        "tilt_deg": round(tilt, 1),
+        "policy": {"active": POLICY["active"], "pending": POLICY["pending"],
+                   "state": POLICY["state"], "message": POLICY["message"], "slots": SLOTS},
+        "safety": dict(REFLEX.public(), triggers=2,
+                       last_trigger={"tilt": 27.5, "predicted": 61.0, "rate": 134.0, "t": 0}),
+        "getup": {"enabled": GETUP["enabled"], "auto": GETUP["auto"], "policy": GETUP["policy"],
+                  "ready": GETUP["enabled"], "note": "",
+                  "has_reference": GETUP["imu_standing_acc"] is not None, "attempts": 0,
+                  "run": run, "config": {k: GETUP[k] for k in getup_mod.LIMITS}},
+        "blackbox": {"enabled": True, "taking": take is not None,
+                     "take_s": round(now - take, 1) if take else 0.0,
+                     "saved": BLACKBOX["saved"], "last_file": BLACKBOX["last_file"],
+                     "error": "", "pending": 0},
+        "loop": {"late_pct": round(0.6 + 0.5 * math.sin(t * 0.3), 1), "late_total": 14,
+                 "worst_ms": 41.0, "read_failures": 0, "ticks": int(t * 50)},
+        "command_slew": dict(SLEW),
+        "servo_voltages": volts,
+    }
 
 
 def _png(w, h, pix):
@@ -110,7 +206,7 @@ def build_state():
     pct = int(clamp((volt - 6.6) / (8.4 - 6.6) * 100, 0, 100))
 
     # attitude wobble; brief "fall" every ~35 s so the horizon alarm shows
-    fallen = (t % 35) > 32
+    fallen = (t % 35) > 32 if FORCE_FALL["v"] is None else FORCE_FALL["v"]
     if fallen:
         pitch, roll = 47.0, 33.0
     else:
@@ -155,7 +251,8 @@ def build_state():
         "antenna_sync": ANT["sync"],
         "sounds": ["beep1.wav", "happy1.wav", "sad1.wav", "quack.wav"],
         "uptime_s": round(t, 1),
-        "message": "mock server — no hardware attached",
+        "message": NOTE["text"] if time.time() < NOTE["until"] else "",
+        **_suite_state(t, pitch, roll, fallen),
     }
 
 
@@ -185,6 +282,8 @@ def handle_button(b):
         FLAGS["head_control"] = not FLAGS["head_control"]
     elif name == "A" and action == "press":
         PAUSED["v"] = not PAUSED["v"]
+        if not PAUSED["v"] and FORCE_FALL["v"]:
+            FORCE_FALL["v"] = False       # "stood it up and resumed"
     elif name == "LB":
         FLAGS["sprint"] = (action == "down")
     elif name == "dpad_up" and action == "press":
@@ -201,8 +300,79 @@ def handle_button(b):
         REC["state"] = "idle" if REC["state"] == "playing" else "playing"
 
 
+def _handle_suite_setting(body):
+    """Policy / soft landing / get-up / recorder groups. True if handled."""
+    group, key, val, action = (body.get("group"), body.get("key"), body.get("value"),
+                               body.get("action"))
+    if group == "policy" and key == "active":
+        slot = next((x for x in SLOTS if x["id"] == val), None)
+        if slot is None or slot["kind"] != "walk" or not slot["usable"]:
+            POLICY.update(state="error", message=f"cannot use: {val}")
+        elif val != POLICY["active"]:
+            POLICY.update(pending=val, state="loading", message="", t=time.time())
+        return True
+    if group == "safety":
+        if action == "reset":
+            REFLEX.cfg = fall_reflex.clean_config({})
+        elif action == "save":
+            note("Fall reflex settings saved.")
+        elif key == "reset_peaks":
+            REFLEX.reset_peaks()
+        else:
+            REFLEX.set(key, val)
+        return True
+    if group == "getup":
+        if action == "reset":
+            GETUP.update(getup_mod.clean_config({}))
+        elif action == "save":
+            note("Get-up settings saved.")
+        elif key == "start":
+            if not GETUP["enabled"]:
+                note("Get-up is switched off (TUNE → Get-up).")
+            else:
+                GETUP_RUN["t0"] = time.time()
+                note("Get-up running (attempt 1). A aborts.", 4.0)
+        elif key == "abort":
+            GETUP_RUN["t0"], GETUP_RUN["result"] = None, "stopped by the operator"
+            note("Get-up stopped: stopped by the operator.")
+        elif key == "capture_reference":
+            if TUNER.holding:
+                GETUP["imu_standing_acc"] = [0.4, -0.3, 9.79]
+                note("Standing reference saved.")
+            else:
+                note("Hold the stance first, then capture.")
+        elif key in GETUP:
+            keep = GETUP["imu_standing_acc"]
+            GETUP.update(getup_mod.clean_config({**GETUP, key: val}))
+            GETUP["imu_standing_acc"] = keep
+        return True
+    if group == "recorder":
+        if key == "mark":
+            BLACKBOX["saved"] += 1
+            BLACKBOX["last_file"] = time.strftime("%Y%m%d_%H%M%S_mark.npz")
+            FAKE_LOGS.insert(0, {"name": BLACKBOX["last_file"], "bytes": 150_000, "mtime": 0})
+            note("Marked: the last seconds will be saved.")
+        elif key == "take":
+            if val:
+                BLACKBOX["take_t0"] = time.time()
+            elif BLACKBOX["take_t0"]:
+                BLACKBOX["take_t0"] = None
+                BLACKBOX["saved"] += 1
+                BLACKBOX["last_file"] = time.strftime("%Y%m%d_%H%M%S_take_") + POLICY["active"] + ".npz"
+                FAKE_LOGS.insert(0, {"name": BLACKBOX["last_file"], "bytes": 600_000, "mtime": 0})
+                note("Take saved.")
+        return True
+    if group == "walk" and str(key).startswith("slew_"):
+        k = key[len("slew_"):]
+        SLEW[k] = bool(val) if k == "enabled" else float(val)
+        return True
+    return False
+
+
 def handle_setting(body):
     group = body.get("group")
+    if _handle_suite_setting(body):
+        return
     if body.get("action") == "save":
         if group == "joint_offsets":
             TUNER.save(lambda fields: print("WOULD WRITE", fields))
@@ -273,6 +443,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, f.read(), "text/html; charset=utf-8")
         elif path == "/api/state":
             self._send(200, json.dumps(build_state()))
+        elif path == "/api/logs":
+            self._send(200, json.dumps({"logs": FAKE_LOGS}))
+        elif path.startswith("/api/logs/"):
+            self._send(200, b"mock recording", "application/octet-stream")
         elif path == "/api/camera/frame.jpg":
             self._send(200, _camera_frame(), "image/png")
         else:
@@ -321,8 +495,16 @@ def main():
     ap.add_argument("--port", type=int, default=8080)
     ap.add_argument("--mode", choices=["walk", "head_puppet"], default=None,
                     help="force a mode instead of cycling")
+    ap.add_argument("--fallen", action="store_true",
+                    help="start fallen and paused (to preview the get-up / resume buttons)")
+    ap.add_argument("--steady", action="store_true", help="never fall by itself")
     args = ap.parse_args()
     FORCE_MODE = args.mode
+    if args.fallen:
+        FORCE_FALL["v"] = True
+        PAUSED["v"] = True
+    elif args.steady:
+        FORCE_FALL["v"] = False
 
     srv = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
     print(f"Open Duck Mini mock UI  ->  http://localhost:{args.port}/")
