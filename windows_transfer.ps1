@@ -152,8 +152,17 @@ scp -o StrictHostKeyChecking=no $tar "${Target}:/tmp/duck_transfer.tar"
 if ($LASTEXITCODE -ne 0) { Fail "scp failed. Is the duck on and is your PC on the 'Openduck' Wi-Fi?" }
 
 # 5) extract on the robot, backing up each existing file once as .orig  (password prompt #2)
-$remote = @'
+#    The archive's checksum travels with the command: the duck's Wi-Fi drops now and
+#    then, and an archive that arrived cut short must not be unpacked over the runtime.
+$want = (Get-FileHash -Algorithm SHA256 -LiteralPath $tar).Hash.ToLower()
+$remote = "WANT=$want`n" + @'
 set -e
+GOT=$(sha256sum /tmp/duck_transfer.tar | cut -d' ' -f1)
+if [ "$GOT" != "$WANT" ]; then
+  echo "  the archive arrived damaged (checksum mismatch); nothing was changed"
+  rm -f /tmp/duck_transfer.tar
+  exit 3
+fi
 cd "$HOME/Open_Duck_Mini_Runtime"
 for f in $(tar -tf /tmp/duck_transfer.tar); do
   case "$f" in */) continue ;; esac
@@ -161,11 +170,20 @@ for f in $(tar -tf /tmp/duck_transfer.tar); do
   mkdir -p "$(dirname "$f")"
 done
 tar -xf /tmp/duck_transfer.tar -C "$HOME/Open_Duck_Mini_Runtime"
+BAD=0
+for f in $(tar -tf /tmp/duck_transfer.tar); do
+  case "$f" in *.py)
+    python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$f" || { echo "  does not parse: $f"; BAD=1; } ;;
+  esac
+done
 rm -f /tmp/duck_transfer.tar
-echo "  extracted; existing files backed up once as <file>.orig"
+if [ "$BAD" -ne 0 ]; then echo "  a Python file is broken on the duck: do NOT start the walk, deploy again"; exit 4; fi
+echo "  checksum matches; extracted; every Python file parses"
+echo "  existing files backed up once as <file>.orig"
 '@
 Write-Host "Deploying on the robot — enter the duck password again ..."
 ssh -o StrictHostKeyChecking=no $Target $remote
+if ($LASTEXITCODE -eq 3) { Fail "the archive arrived damaged. Move closer to the duck and run this again." }
 if ($LASTEXITCODE -ne 0) { Fail "remote extract failed." }
 
 Remove-Item -LiteralPath $tar -Force -ErrorAction SilentlyContinue

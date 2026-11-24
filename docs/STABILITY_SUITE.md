@@ -27,8 +27,8 @@ the stick ramp start **off**.
 ## Deploy
 
 1. Mac joined to the duck's Wi-Fi, then run `mac_transfer.command` (Windows:
-   `windows_transfer.ps1`). The Mac script now compares checksums after every file and
-   checks that every Python file parses on the duck; it stops if anything arrived broken.
+   `windows_transfer.ps1`). Both now compare checksums and check that every Python file
+   parses on the duck, and stop if anything arrived broken.
 2. Restart the walk. The log line `[policy] running: Stock walk (2 walk / 2 get-up slots
    found)` confirms the policies arrived.
 

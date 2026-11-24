@@ -70,8 +70,10 @@ first: it has the parts, the defaults and the ordered first-test plan for a real
   `flight_recorder`, `command_slew`.
 - `rustypot` 0.1.0 cannot read voltage, so there is no voltage read while walking. Use
   `scripts/voltage_sag_test.py` (pypot, relative knee moves only) for the supply under load.
-- `mac_transfer.command` now verifies every copied file by checksum and parse-checks the
-  Python files on the duck. `windows_transfer.ps1` has the new file list but not that check.
+- Both deploy scripts verify what arrived: `mac_transfer.command` compares a checksum per
+  file, `windows_transfer.ps1` one for the archive; both parse-check the Python files on
+  the duck and stop if anything is broken. The Windows change is untested on Windows
+  (its duck-side shell part was run locally).
 - Web UI: the TUNE sheet is tabbed; the IMU trim card moved into Walk → Calibration.
 
 ### New 2026-11-06 — **NOT yet tested on hardware**
