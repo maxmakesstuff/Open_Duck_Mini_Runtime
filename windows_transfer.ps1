@@ -42,6 +42,8 @@ $Files = @(
   'scripts/apply_stability_defaults.py',
   'scripts/gamepad_probe.py',
   'scripts/first_time_setup.py',
+  'scripts/analyze_falls.py',
+  'scripts/voltage_sag_test.py',
   # --- runtime library (mini_bdx_runtime package) ---
   'mini_bdx_runtime/mini_bdx_runtime/xbox_controller.py',
   'mini_bdx_runtime/mini_bdx_runtime/buttons.py',
@@ -62,6 +64,22 @@ $Files = @(
   'mini_bdx_runtime/mini_bdx_runtime/offset_tuner.py',
   'mini_bdx_runtime/mini_bdx_runtime/antennas.py',
   'mini_bdx_runtime/mini_bdx_runtime/antenna_anim.py',
+  # --- stability suite: policy slots, soft landing, get-up, black box ---
+  'mini_bdx_runtime/mini_bdx_runtime/policy_slots.py',
+  'mini_bdx_runtime/mini_bdx_runtime/fall_reflex.py',
+  'mini_bdx_runtime/mini_bdx_runtime/getup.py',
+  'mini_bdx_runtime/mini_bdx_runtime/flight_recorder.py',
+  'mini_bdx_runtime/mini_bdx_runtime/command_shaper.py',
+  'mini_bdx_runtime/mini_bdx_runtime/loop_health.py',
+  # --- selectable policies (ONNX + description; see policies/README.md) ---
+  'policies/README.md',
+  'policies/LICENSE-dk5426.txt',
+  'policies/dk5426-walk.json',
+  'policies/dk5426_walker_258M.onnx',
+  'policies/dk5426-getup-real2.json',
+  'policies/dk5426_getup_real2_80M.onnx',
+  'policies/dk5426-getup-real.json',
+  'policies/dk5426_getup_real_41M.onnx',
   # --- Web UI page (served by web_control.py) ---
   'mini_bdx_runtime/mini_bdx_runtime/webui/index.html',
   'mini_bdx_runtime/mini_bdx_runtime/webui/offsets.html',

@@ -52,6 +52,11 @@ REMOTE_ROOT="/home/${REMOTE_USER}/Open_Duck_Mini_Runtime"
 echo "→ deploying to ${REMOTE_USER}@${REMOTE_HOST}  (${REMOTE_ROOT})"
 echo
 
+# Checksum of a local file (macOS has md5, Linux has md5sum).
+local_md5() {
+  if command -v md5 >/dev/null 2>&1; then md5 -q "$1"; else md5sum "$1" | cut -d' ' -f1; fi
+}
+
 # Reuse ONE ssh connection for every step -> a single password prompt.
 CTRL="/tmp/transfer-${REMOTE_USER}-${REMOTE_HOST}.sock"
 SSH_OPTS=(-o "ControlMaster=auto" -o "ControlPath=${CTRL}" -o "ControlPersist=120" -o "ConnectTimeout=10")
@@ -69,6 +74,8 @@ FILES=(
   "scripts/apply_stability_defaults.py|scripts"
   "scripts/gamepad_probe.py|scripts"
   "scripts/first_time_setup.py|scripts"
+  "scripts/analyze_falls.py|scripts"
+  "scripts/voltage_sag_test.py|scripts"
   # --- runtime library (mini_bdx_runtime package) ---
   "mini_bdx_runtime/mini_bdx_runtime/xbox_controller.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/buttons.py|mini_bdx_runtime/mini_bdx_runtime"
@@ -89,6 +96,22 @@ FILES=(
   "mini_bdx_runtime/mini_bdx_runtime/offset_tuner.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/antennas.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/antenna_anim.py|mini_bdx_runtime/mini_bdx_runtime"
+  # --- stability suite: policy slots, soft landing, get-up, black box ---
+  "mini_bdx_runtime/mini_bdx_runtime/policy_slots.py|mini_bdx_runtime/mini_bdx_runtime"
+  "mini_bdx_runtime/mini_bdx_runtime/fall_reflex.py|mini_bdx_runtime/mini_bdx_runtime"
+  "mini_bdx_runtime/mini_bdx_runtime/getup.py|mini_bdx_runtime/mini_bdx_runtime"
+  "mini_bdx_runtime/mini_bdx_runtime/flight_recorder.py|mini_bdx_runtime/mini_bdx_runtime"
+  "mini_bdx_runtime/mini_bdx_runtime/command_shaper.py|mini_bdx_runtime/mini_bdx_runtime"
+  "mini_bdx_runtime/mini_bdx_runtime/loop_health.py|mini_bdx_runtime/mini_bdx_runtime"
+  # --- selectable policies (ONNX + description; see policies/README.md) ---
+  "policies/README.md|policies"
+  "policies/LICENSE-dk5426.txt|policies"
+  "policies/dk5426-walk.json|policies"
+  "policies/dk5426_walker_258M.onnx|policies"
+  "policies/dk5426-getup-real2.json|policies"
+  "policies/dk5426_getup_real2_80M.onnx|policies"
+  "policies/dk5426-getup-real.json|policies"
+  "policies/dk5426_getup_real_41M.onnx|policies"
   # --- Web UI page (served by web_control.py) ---
   "mini_bdx_runtime/mini_bdx_runtime/webui/index.html|mini_bdx_runtime/mini_bdx_runtime/webui"
   "mini_bdx_runtime/mini_bdx_runtime/webui/offsets.html|mini_bdx_runtime/mini_bdx_runtime/webui"
@@ -165,10 +188,47 @@ for entry in "${FILES[@]}"; do
     NEW_FILES+=("${remdir}/${base}")
   fi
 
-  scp "${SSH_OPTS[@]}" "${LOCAL_ROOT}/${rel}" "${REMOTE_USER}@${REMOTE_HOST}:${remote}"
-  echo "    transferred ✓"
+  # Copy, then compare checksums: the duck's Wi-Fi drops now and then, and a file
+  # that arrived cut short would stop the walk from starting. One retry, then stop.
+  want="$(local_md5 "${LOCAL_ROOT}/${rel}")"
+  ok=0
+  for attempt in 1 2; do
+    scp -q "${SSH_OPTS[@]}" "${LOCAL_ROOT}/${rel}" "${REMOTE_USER}@${REMOTE_HOST}:${remote}" || true
+    got="$(ssh_cmd "md5sum '${remote}' 2>/dev/null | cut -d' ' -f1" || true)"
+    if [ "${got}" = "${want}" ]; then ok=1; break; fi
+    echo "    checksum differs after copy (attempt ${attempt}); copying again ..."
+  done
+  if [ "${ok}" -ne 1 ]; then
+    echo "ERROR: ${base} did not arrive intact on the duck (checksum mismatch)."
+    echo "       Nothing after it was copied. Move closer to the duck and run this again."
+    exit 1
+  fi
+  echo "    transferred, checksum matches ✓"
   echo
 done
+
+# 3b) every Python file must at least parse on the duck (never start a broken walk)
+echo "Checking that the Python files parse on the duck ..."
+PY_BAD=0
+for entry in "${FILES[@]}"; do
+  rel="${entry%%|*}"
+  remdir="${entry##*|}"
+  case "${rel}" in
+    *.py)
+      remote="${REMOTE_ROOT}/${remdir}/$(basename "${rel}")"
+      if ! ssh_cmd "python3 -c \"import ast,sys; ast.parse(open(sys.argv[1]).read())\" '${remote}'"; then
+        echo "  ✗ does not parse: ${remote}"
+        PY_BAD=1
+      fi
+      ;;
+  esac
+done
+if [ "${PY_BAD}" -ne 0 ]; then
+  echo "ERROR: at least one file is broken on the duck. Do NOT start the walk; run this again."
+  exit 1
+fi
+echo "  all Python files parse ✓"
+echo
 
 # 4) close the shared connection
 ssh "${SSH_OPTS[@]}" -O exit "${REMOTE_USER}@${REMOTE_HOST}" 2>/dev/null || true
@@ -209,6 +269,11 @@ cat <<'EOF'
                      sudo reboot         # activates the DNS half
    9. Xbox auto-reconnect (optional):
                      bash ops/bluetooth/setup-bluetooth-reconnect.sh
+  10. Stability suite (new): pick the walk policy, soft landing and get-up from the
+                phone (TUNE -> Policy / Safety / Health). Everything starts in its
+                safe setting; follow docs/STABILITY_SUITE.md for the first test.
+                Supply check under load: python scripts/turn_on.py
+                                         python scripts/voltage_sag_test.py
 
  NOTE: for a DIFFERENT hostname/user, edit REMOTE_* at the top. If the second duck
  is an identical clone (user bdxv2, host bdxv2.local), just connect your Mac to

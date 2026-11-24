@@ -12,7 +12,7 @@ against the current code before acting.
 
 ---
 
-## Current state (last updated 2026-07-30, branch `feature/overnight-suite`)
+## Current state (last updated 2026-11-24, branch `feature/stability-suite`)
 
 Two physical robots ("ducks"), identical hardware. **Both are now fully commissioned and
 walking stably.** Duck 2 was brought up end-to-end this session — full `transfer.command`,
@@ -38,6 +38,41 @@ its exact state. What is LIVE on the **reference duck**:
 Recent commits (`git log --oneline`): stability levers `0cdc069`, config baseline
 `acfb147`, captive portal `2754311`+`bd146d9`, German manual `08e2010`, second-duck
 deploy `f8c7635`. The pre-session baseline is `37c7638`.
+
+### New 2026-11-24, branch `feature/stability-suite` — **NOT yet tested on hardware**
+
+**Stability suite**: policy slots, early fall detection with a soft landing, a get-up, a
+black-box recorder, a stick ramp and loop-health counters. Read `docs/STABILITY_SUITE.md`
+first: it has the parts, the defaults and the ordered first-test plan for a real duck.
+
+- Each part is a pure module in `mini_bdx_runtime/` (`policy_slots`, `fall_reflex`,
+  `getup`, `flight_recorder`, `command_shaper`, `loop_health`) with its own test file. The
+  walk loop connects them in the block marked "stability suite" in
+  `scripts/v2_rl_walk_mujoco.py`. `test_walk_stability.py` runs the real loop on the
+  simulated duck through switch, fall, landing, recovery and get-up.
+- **Defaults keep the walk unchanged** (pinned by
+  `test_default_config_changes_nothing_about_the_walk`): soft landing = `observe` (detects
+  and records only), get-up off, stick ramp off, stock policy.
+- The loop has an `_activity` besides paused/walking: `reflex`, `recover`, `getup`,
+  `balance`, `switch`. Those ticks own the motors; every scripted write is clamped to the
+  joint limits and speed-limited (rule 4). **A** aborts a get-up and is refused while a
+  soft duck still lies down.
+- `self._soft` means the servo stiffness is lowered. Anything that wants to move the
+  duck must go through `_begin_recover` or `_start_getup`, which first set the goal to the
+  current joint positions and only then restore the gains.
+- Policies live in `policies/` (ONNX + JSON description, `policies/README.md`). The stock
+  walk is always the slot `stock` = the `--onnx_model_path` file. `action_scale` and the
+  gait offset are per policy: the top-level config keys stay the stock values, other
+  slots keep theirs under `policies.tuning`.
+- Recordings go to `~/duck_logs/*.npz`; download in the Web UI (TUNE → Health) and read
+  with `scripts/analyze_falls.py`. New config keys, written only on Save from the phone
+  and always off the control thread: `policies`, `fall_reflex`, `getup`,
+  `flight_recorder`, `command_slew`.
+- `rustypot` 0.1.0 cannot read voltage, so there is no voltage read while walking. Use
+  `scripts/voltage_sag_test.py` (pypot, relative knee moves only) for the supply under load.
+- `mac_transfer.command` now verifies every copied file by checksum and parse-checks the
+  Python files on the duck. `windows_transfer.ps1` has the new file list but not that check.
+- Web UI: the TUNE sheet is tabbed; the IMU trim card moved into Walk → Calibration.
 
 ### New 2026-11-06 — **NOT yet tested on hardware**
 

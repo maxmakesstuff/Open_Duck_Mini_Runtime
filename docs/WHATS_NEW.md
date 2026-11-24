@@ -23,6 +23,23 @@ newcomer can bring a duck up, tune it, and enjoy it without living in the termin
 
 ## Next release (unreleased)
 
+**Stability suite** (not yet run on a real duck; see [STABILITY_SUITE.md](STABILITY_SUITE.md)
+for the first-test plan):
+
+- **Pick the walk policy on the phone**, without a restart. The duck remembers the choice.
+  Ships the stock walk plus the dk5426 walker.
+- **Soft landing:** the duck notices a fall on the way down, stops kicking and lets its
+  joints go soft before the impact. Starts in Observe, where it only watches and records.
+- **Get-up** from face-down with dk5426's policy, then the walk policy balances. Off by
+  default.
+- **Black box:** the last 20 seconds of sensor and motor data are saved at every fall, and
+  can be downloaded from the phone. `scripts/analyze_falls.py` turns them into numbers.
+- **Health tab:** late control steps, failed servo reads, per-servo supply voltage.
+  `scripts/voltage_sag_test.py` measures the supply while the legs work.
+- **Settings as tabs** (Policy, Walk, Safety, Health, Ears). The IMU trim moved from the
+  main screen into Walk → Calibration, so the main screen fits small phones.
+- The Mac deploy script verifies every copied file by checksum.
+
 **Joint offsets from your phone** (`/offsets`, or **TUNE** in Walk mode), based on a
 contribution by **Gene Turnbow** ([SCIFI.radio](https://scifi.radio/)). Hold the stance,
 nudge any joint, check the level readout, try a few steps, save. Edits only apply while

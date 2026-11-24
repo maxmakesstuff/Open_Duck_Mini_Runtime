@@ -45,6 +45,55 @@ Returns `offsets.html`, the joint-offset and IMU-trim calibration page (also sel
 }
 ```
 
+### Stability suite: more of `GET /api/state` (walk mode)
+```json
+{
+  "activity": "walk",        // walk|paused|stance|reflex|recover|getup|balance|switch
+  "soft": false,             // servo stiffness currently lowered (after a soft landing)
+  "tilt_deg": 4.2,           // fused gyro+accel lean, degrees
+  "policy": {"active": "stock", "pending": null, "state": "idle", "message": "",
+             "slots": [{"id": "stock", "name": "Stock walk", "kind": "walk",
+                        "summary": "…", "license": "", "usable": true, "error": "",
+                        "defaults": {}}]},        // state: idle|loading|ready|error
+  "safety": {"mode": "observe", "phase": "armed",  // phase: armed|tuck|soft|down
+             "predicted_deg": 6.1, "peak_tilt_deg": 14.0, "peak_predicted_deg": 31.0,
+             "triggers": 0, "last_trigger": null, "config": {"min_tilt_deg": 20.0}},
+  "getup": {"enabled": false, "auto": false, "policy": "dk5426-getup-real2",
+            "ready": false, "note": "", "has_reference": false, "attempts": 0,
+            "run": null, "config": {"blend": 0.5}},
+  "blackbox": {"enabled": true, "taking": false, "take_s": 0.0, "saved": 0,
+               "last_file": "", "error": "", "pending": 0},
+  "loop": {"late_pct": 0.4, "late_total": 3, "worst_ms": 31.0, "read_failures": 0, "ticks": 9000},
+  "command_slew": {"enabled": false, "lin_accel": 0.3, "ang_accel": 4.0, "stop_factor": 3.0},
+  "servo_voltages": {"left_knee": 7.5}   // last reading taken while paused; {} until then
+}
+```
+
+Their settings, all over `POST /api/setting` (same "queued, not applied" rule as below):
+
+```json
+{"group":"policy","key":"active","value":"dk5426-walk"}   // load, then swap at a standstill
+{"group":"safety","key":"mode","value":"active"}          // off | observe | active
+{"group":"safety","key":"min_tilt_deg","value":18}        // any key of safety.config
+{"group":"safety","key":"reset_peaks","value":true}       // also clears the loop counters
+{"group":"safety","action":"save"}                        // -> duck_config "fall_reflex"
+{"group":"getup","key":"enabled","value":true}            // also: auto, policy, any config key
+{"group":"getup","key":"start","value":true}              // only from a standstill
+{"group":"getup","key":"abort","value":true}
+{"group":"getup","key":"capture_reference","value":true}  // needs a held stance, duck still
+{"group":"getup","action":"save"}                         // -> duck_config "getup"
+{"group":"recorder","key":"mark","value":true}            // save the last seconds
+{"group":"recorder","key":"take","value":true}            // false stops and saves
+{"group":"walk","key":"slew_enabled","value":true}        // also slew_lin_accel, slew_ang_accel
+```
+
+`{"group":"safety","action":"reset"}` and `{"group":"getup","action":"reset"}` restore the
+defaults live (not saved until Save).
+
+### `GET /api/logs`  → `{"logs":[{"name":"…_fall.npz","bytes":148220,"mtime":…}]}`
+Black-box recordings in `~/duck_logs`, newest first. `GET /api/logs/<name>` downloads one.
+Only plain `.npz` names inside that folder are served.
+
 ### Joint offsets, over `POST /api/setting`
 A POST only queues the request for the control loop, so `{"ok":true}` means "received", not
 "applied". The loop's answer is the next `joint_offsets` telemetry: a refused edit simply

@@ -92,6 +92,12 @@ To trim balance while walking, **hold RB**; the D-pad then adjusts the tilt corr
 > While **RB** is held, cadence (D-pad ↑/↓) and record/playback (D-pad ←/→) are
 > **disabled** so nothing double-fires.
 
+### After a fall
+With soft landing on **Active** (TUNE → Safety) the duck goes limp when it falls. Stand
+it up, then press **A** (or **RESUME** on the phone): it stiffens, glides to its stance
+and walks on. While it still lies down, A does nothing, on purpose. **A** also stops a
+running get-up. First-time setup and testing: [STABILITY_SUITE.md](STABILITY_SUITE.md).
+
 ### Other buttons
 - **A** → pause / resume (the robot also **auto-pauses on a fall** — right it, then **A**).
 - **X** → projector / "scanner LED" on/off.
@@ -118,6 +124,7 @@ To trim balance while walking, **hold RB**; the D-pad then adjusts the tilt corr
 | **RB + D-pad ↑ / ↓** | IMU trim: pitch |
 | **RB + D-pad ← / →** | IMU trim: roll |
 | **RB + Y** | save IMU trim |
+| **RB + B** | get up (if switched on in TUNE → Safety) |
 
 ---
 
@@ -196,7 +203,10 @@ governor) when enabled.
 - Buttons: **Y** (head), **X** (scanner), **B** (sound), **A** (pause)
 - D-pad: **GAIT+ / GAIT−** (cadence), **REC** (hold = record), **PLAY** (playback)
 - **LB** (hold = sprint)
-- **IMU-trim card** (pitch/roll ±, **Save**, and **↺** reset) for balance fine-tuning
+- **Policy chip** (below the readouts): shows the running walk policy; tap to change it
+- **MARK**: saves the last 20 seconds to a recording (for "what just happened?")
+- After a fall: **GET UP** (if switched on) and **RESUME** appear as buttons, with one
+  line of text about what the duck needs from you
 
 ### Head-puppet mode in the app
 - On-screen joysticks steer the **head**
@@ -209,8 +219,15 @@ governor) when enabled.
 Tap **TUNE** (top right) for a panel where **every setting is live** and nothing is
 saved until you press **Save**:
 
-- **Walk mode** — sliders for **action scale**, gait offset, velocity clip, max motor
-  velocity, and the full stability governor.
+- **Walk mode** — five tabs:
+  - **Policy** — pick the walk policy. The duck stands still for a moment, switches and
+    remembers the choice.
+  - **Walk** — action scale and gait offset (kept per policy), joint speed limit, stick
+    ramp, the stability governor, and the **IMU trim** card.
+  - **Safety** — soft landing (Off / Observe / Active) with a gauge of how far the duck
+    leans, and the get-up.
+  - **Health** — recorder (MARK, takes, download), late control steps, servo voltages.
+  - **Ears** — antenna animation.
 - **Head-puppet mode** — a **live camera view** plus **exposure, gain, brightness,
   contrast, saturation, sharpness and white-balance** controls.
 - **Both modes** — ear-antenna **free animation** on/off and **ear-sync** on/off.
