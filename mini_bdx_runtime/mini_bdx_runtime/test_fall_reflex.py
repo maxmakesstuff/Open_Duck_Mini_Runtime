@@ -195,6 +195,23 @@ def test_live_set_validates():
     assert not reflex.set("nope", 1)
 
 
+def test_a_single_gyro_spike_is_ignored_but_a_real_fast_tip_is_not():
+    for spike in (25.0, -60.0, 400.0):
+        est, reflex = fr.TiltEstimator(), fr.FallReflex({"mode": "active"})
+        for i in range(200):
+            w = spike if i == 100 else 0.0
+            est.update((0.0, w, 0.0), (0.0, 0.0, G), DT)
+            assert reflex.update(est.tilt_deg, est.rate_deg_s, abs(w), i * DT) is None, spike
+        assert est.tilt_deg < 1.0, f"spike {spike} moved the estimate to {est.tilt_deg:.1f}"
+    # a sustained jump (the duck really got knocked) is accepted one tick later
+    est = fr.TiltEstimator()
+    for i in range(10):
+        est.update((0.0, 0.0, 0.0), (0.0, 0.0, G), DT)
+    for i in range(5):
+        est.update((0.0, 6.0, 0.0), (0.0, 0.0, G), DT)
+    assert est.tilt_deg > 20.0, est.tilt_deg
+
+
 def test_estimator_survives_bad_samples():
     est = fr.TiltEstimator()
     est.update((0, 0, 0), (0, 0, 0), DT)                 # the IMU's pre-first-sample zeros

@@ -57,9 +57,12 @@ first: it has the parts, the defaults and the ordered first-test plan for a real
   `balance`, `switch`. Those ticks own the motors; every scripted write is clamped to the
   joint limits and speed-limited (rule 4). **A** aborts a get-up and is refused while a
   soft duck still lies down.
-- `self._soft` means the servo stiffness is lowered. Anything that wants to move the
-  duck must go through `_begin_recover` or `_start_getup`, which first set the goal to the
-  current joint positions and only then restore the gains.
+- `self._soft` means the servo stiffness is lowered; `self._needs_recover` means the
+  servos hold a pose the walk policy must not start from (after a soft landing, a stopped
+  get-up or glide, a policy swap while paused). Resume then goes through `_begin_recover`
+  (goal = current joints, restore gains, glide to stance, fade the amplitude in). Never
+  call `_reset_policy_state()` unless the servos really are at the stance: it declares
+  the stance as the last target, which is what the speed limit measures from.
 - Policies live in `policies/` (ONNX + JSON description, `policies/README.md`). The stock
   walk is always the slot `stock` = the `--onnx_model_path` file. `action_scale` and the
   gait offset are per policy: the top-level config keys stay the stock values, other

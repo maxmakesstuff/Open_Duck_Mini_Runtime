@@ -92,6 +92,30 @@ def test_a_save_keeps_the_file_mode():
     os.unlink(path)
 
 
+def test_simultaneous_saves_lose_nothing_and_never_corrupt_the_file():
+    """The walk saves from its control thread and from background threads."""
+    import threading
+    c, path = _cfg({"joints_offsets": {"left_knee": 0.1}})
+    errors = []
+
+    def save(i):
+        try:
+            save_config_fields({f"key{i}": i}, config_json_path=path, backup=False)
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+    for _ in range(30):
+        threads = [threading.Thread(target=save, args=(i,)) for i in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    assert errors == [], errors[:2]
+    data = json.load(open(path))
+    assert all(data[f"key{i}"] == i for i in range(8)), "an edit was lost"
+    assert data["joints_offsets"] == {"left_knee": 0.1}
+    os.unlink(path)
+
+
 def _run():
     fns = [v for k, v in sorted(globals().items())
            if k.startswith("test_") and callable(v)]

@@ -59,6 +59,8 @@ LIMITS = {
 }
 
 G = 9.81
+GYRO_LIMIT = 12.0      # rad/s; a duck this size tips at up to about 8
+GYRO_JUMP = 4.0        # rad/s per tick; free fall about the feet changes it by < 1
 
 
 def _clamp(v, lo, hi):
@@ -76,7 +78,7 @@ def clean_config(cfg):
             continue
         try:
             v = float(cfg[key])
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
         if not math.isfinite(v):
             continue
@@ -107,11 +109,15 @@ class TiltEstimator:
         self.accel_tau = float(accel_tau)
         self.trust_band = float(trust_band)
         self.use_gyro = bool(use_gyro)
+        self._gyro_prev = None         # last accepted sample, for the spike filter
+        self._gyro_held = False
         self.up = None                 # unit vector, body frame
         self.tilt_deg = 0.0
         self.rate_deg_s = 0.0          # d(tilt)/dt, smoothed; + = tipping further
 
     def reset(self):
+        self._gyro_prev = None
+        self._gyro_held = False
         self.up = None
         self.tilt_deg = 0.0
         self.rate_deg_s = 0.0
@@ -122,12 +128,26 @@ class TiltEstimator:
         try:
             a = (float(accel[0]), float(accel[1]), float(accel[2]))
             w = (float(gyro[0]), float(gyro[1]), float(gyro[2]))
-        except (TypeError, ValueError, IndexError):
+        except (TypeError, ValueError, IndexError, OverflowError):
             return self.tilt_deg
         if not all(math.isfinite(x) for x in a + w):
             return self.tilt_deg
         dt = _clamp(float(dt), 0.0, 0.1)
         a_mag = _norm(a)
+        # Spike filter: the BNO055 now and then returns one wild gyro sample, and one
+        # sample of 25 rad/s would read as half a fall. A sample that jumps further
+        # from the last one than a tipping duck can accelerate is held back for one
+        # tick; if the next sample agrees with it, it was real and is used. No lag in
+        # normal operation (a median would cost a whole tick of the short lead time).
+        w = tuple(_clamp(x, -GYRO_LIMIT, GYRO_LIMIT) for x in w)
+        prev = self._gyro_prev
+        if (prev is not None and not self._gyro_held
+                and max(abs(w[i] - prev[i]) for i in range(3)) > GYRO_JUMP):
+            self._gyro_held = True
+            w = prev
+        else:
+            self._gyro_held = False
+            self._gyro_prev = w
 
         if self.up is None:
             if a_mag < 1e-3:
@@ -204,7 +224,7 @@ class FallReflex:
         try:
             if not math.isfinite(float(value)):
                 return False
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return False
         self.cfg = clean_config({**self.cfg, key: value})
         return True

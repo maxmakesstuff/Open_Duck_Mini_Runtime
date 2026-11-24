@@ -79,7 +79,7 @@ def clean_config(cfg):
             continue
         try:
             v = float(cfg[key])
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
         if not math.isfinite(v):
             continue
@@ -93,7 +93,7 @@ def clean_acc(value):
     """A plausible standing accelerometer reading as [x, y, z], or None."""
     try:
         v = [float(x) for x in value]
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
     if len(v) != 3 or not all(math.isfinite(x) for x in v):
         return None

@@ -228,6 +228,8 @@ if [ "${PY_BAD}" -ne 0 ]; then
   exit 1
 fi
 echo "  all Python files parse ✓"
+# Flush to the SD card: a duck switched off right after a deploy must not lose files.
+ssh_cmd "sync" || true
 echo
 
 # 4) close the shared connection

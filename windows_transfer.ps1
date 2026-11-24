@@ -177,6 +177,7 @@ for f in $(tar -tf /tmp/duck_transfer.tar); do
   esac
 done
 rm -f /tmp/duck_transfer.tar
+sync
 if [ "$BAD" -ne 0 ]; then echo "  a Python file is broken on the duck: do NOT start the walk, deploy again"; exit 4; fi
 echo "  checksum matches; extracted; every Python file parses"
 echo "  existing files backed up once as <file>.orig"

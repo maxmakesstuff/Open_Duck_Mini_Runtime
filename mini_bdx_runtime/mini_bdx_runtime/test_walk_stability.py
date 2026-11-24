@@ -664,6 +664,160 @@ def test_standing_reference_refuses_a_moving_duck():
     run_duck(scenario)
 
 
+# ------------------------------------------- regressions from the code review
+def test_refused_auto_retry_ends_soft_and_paused_never_walking():
+    """An automatic get-up times out; meanwhile get-up was switched off. The retry is
+    refused, and the loop must not drop into a walking tick with the duck lying."""
+    def scenario(duck, post, state):
+        imu = Imu(duck)
+        yield from wait_for(lambda: state()["getup"]["ready"], "the get-up policy")
+        yield from ticks(5)
+        imu.fall()
+        yield from wait_for(lambda: duck._activity == "getup", "the automatic get-up")
+        walk_calls = len(duck.policy.obs)
+        setting(post, "getup", "enabled", False)     # switched off mid-attempt
+        yield from wait_for(lambda: duck._activity != "getup", "the attempt to end")
+        yield from ticks(30)
+        assert duck.paused and duck._soft and duck._activity is None
+        assert len(duck.policy.obs) == walk_calls, "the walk policy must not run"
+    run_duck(scenario, config={**REFLEX_ON, "getup": {
+        "enabled": True, "auto": True, "timeout_s": 2.0}})
+
+
+def test_stopping_the_recovery_glide_and_resuming_never_snaps():
+    """A (glide), A (stop), A (resume): the last A continues the glide. It used to
+    hand the off-pose duck straight to the policy: 1.2 rad in one write."""
+    def scenario(duck, post, state):
+        imu = Imu(duck)
+        yield from ticks(5)
+        imu.fall()
+        yield from wait_for(lambda: duck.paused, "down")
+        imu.upright()
+        knee = duck.hwi.joints["right_knee"]
+        duck.hwi.io.goal[knee] = OFFSETS["right_knee"] + 0.1     # limp knee, far off
+        yield from ticks(3)
+        start = len(duck.hwi.io.writes)
+        press_a(duck)
+        yield from ticks(8)
+        assert state()["activity"] == "recover"
+        press_a(duck)                                # stop mid-glide
+        yield from ticks(5)
+        assert duck.paused and duck._activity is None and duck._needs_recover
+        calls = len(duck.policy.obs)
+        press_a(duck)                                # resume
+        yield from ticks(3)
+        assert state()["activity"] == "recover" and len(duck.policy.obs) == calls
+        yield from wait_for(lambda: duck._activity is None, "the glide to finish")
+        yield from ticks(30)
+        assert max_step(duck.hwi.io.writes[start:]) <= 1.0 * DT + 1e-9
+        assert not duck._needs_recover and not duck.paused
+    run_duck(scenario, config=REFLEX_ON)
+
+
+def test_swap_while_paused_keeps_the_pose_and_resumes_through_a_glide():
+    def scenario(duck, post, state):
+        yield from ticks(10)                         # targets sit at init + 0.125
+        press_a(duck)
+        yield from ticks(2)
+        held = duck.motor_targets.copy()
+        start = len(duck.hwi.io.writes)
+        setting(post, "policy", "active", "dk5426-walk")
+        yield from wait_for(lambda: state()["policy"]["active"] == "dk5426-walk", "the swap")
+        assert np.allclose(duck.motor_targets, held), "the swap must not move the targets"
+        assert np.allclose(duck.prev_motor_targets, held)
+        press_a(duck)
+        yield from ticks(2)
+        assert state()["activity"] == "recover"
+        yield from wait_for(lambda: duck._activity is None, "the glide")
+        yield from ticks(40)
+        worst = max_step(duck.hwi.io.writes[start:])
+        assert worst <= 1.0 * DT + 1e-9, f"stepped {worst:.4f} rad after a paused swap"
+    run_duck(scenario)
+
+
+def test_swap_during_a_stance_glide_does_not_jump_the_glide():
+    def scenario(duck, post, state):
+        yield from ticks(10)
+        start = len(duck.hwi.io.writes)
+        hold(post)
+        setting(post, "policy", "active", "dk5426-walk")
+        yield from wait_for(lambda: state()["policy"]["active"] == "dk5426-walk", "the swap")
+        yield from ticks(60)
+        assert max_step(duck.hwi.io.writes[start:]) <= base.MAX_HOLD_DELTA
+    run_duck(scenario)
+
+
+def test_foot_switch_fall_during_balance_clears_the_activity():
+    def scenario(duck, post, state):
+        imu = Imu(duck)
+        yield from wait_for(lambda: state()["getup"]["ready"], "the get-up policy")
+        FakePolicy.action = 0.1
+        yield from ticks(5)
+        imu.fall()
+        yield from wait_for(lambda: duck.paused, "down")
+        setting(post, "getup", "start", True)
+        yield from ticks(15)
+        imu.upright()
+        yield from wait_for(lambda: duck._activity == "balance", "standing")
+        duck.feet_contacts.get = lambda: [0.0, 0.0]  # lifted / tipped slowly
+        yield from wait_for(lambda: duck.paused, "the foot-switch fall")
+        yield from ticks(3)
+        s = state()
+        assert s["activity"] == "paused" and not s["blackbox"]["taking"]
+    run_duck(scenario, config={**REFLEX_ON, "getup": {"enabled": True, "balance_s": 8.0}})
+
+
+def test_manual_getup_needs_a_lying_duck():
+    def scenario(duck, post, state):
+        yield from wait_for(lambda: state()["getup"]["ready"], "the get-up policy")
+        press_a(duck)
+        yield from ticks(3)
+        setting(post, "getup", "start", True)
+        yield from ticks(3)
+        assert state()["activity"] == "paused" and "lying down" in state()["message"]
+    run_duck(scenario, config=GETUP_ON)
+
+
+def test_absurd_numbers_from_the_web_cannot_stop_the_loop():
+    def scenario(duck, post, state):
+        yield from ticks(3)
+        for group, key in (("safety", "hard_deg"), ("getup", "timeout_s"),
+                           ("walk", "slew_lin_accel"), ("walk", "action_scale")):
+            body = '{"group":"%s","key":"%s","value":1%s}' % (group, key, "0" * 400)
+            status, _, _ = handle_api("POST", "/api/setting", body.encode(), duck.web_bus, 0)
+            assert status == 400, (group, key, status)
+            # and if such a value ever got past the door, the loop survives it
+            duck.web_bus.push_setting(group, key, 10 ** 400)
+            yield from ticks(2)
+        assert state()["safety"]["config"]["hard_deg"] == 40.0
+    run_duck(scenario)
+
+
+def test_failed_gain_write_still_forces_a_glide_before_walking():
+    """The 'go soft' write fails on the bus. The duck is stiff but off-pose; resume
+    must still glide, and the remembered gains must be the ones the servos have."""
+    def scenario(duck, post, state):
+        imu = Imu(duck)
+
+        def broken(ids, kps):
+            raise RuntimeError("bus error")
+        yield from ticks(5)
+        duck.hwi.io.set_kps = broken
+        imu.fall()
+        yield from wait_for(lambda: duck.paused, "down")
+        assert not duck._soft and duck._needs_recover
+        assert list(duck.hwi.kps)[0] == 30, "HWI must not remember gains it never set"
+        duck.hwi.io.set_kps = lambda ids, kps: None
+        imu.upright()
+        yield from ticks(3)
+        start = len(duck.hwi.io.writes)
+        press_a(duck)
+        yield from wait_for(lambda: duck._activity is None and not duck.paused, "walking")
+        yield from ticks(10)
+        assert max_step(duck.hwi.io.writes[start:]) <= 0.02 + 1e-9
+    run_duck(scenario, config=REFLEX_ON)
+
+
 # ---------------------------------------------------- recorder, loop health, misc
 def test_mark_and_take_write_recordings_that_can_be_listed():
     clear_logs()

@@ -60,7 +60,7 @@ def clean_config(cfg):
                         ("max_files", 5, 2000), ("max_take_s", 10.0, 600.0)):
         try:
             v = float(cfg.get(key, out[key]))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
         if v == v:
             out[key] = min(hi, max(lo, v))

@@ -2,9 +2,15 @@ import json
 from typing import Optional
 import os
 import shutil
+import threading
 import time
 
 HOME_DIR = os.path.expanduser("~")
+
+# Every save in the process goes through this lock: the walk saves from its control
+# thread and from background threads, and two read-modify-write cycles at once would
+# lose one of the edits or leave a half-written file.
+_SAVE_LOCK = threading.Lock()
 
 
 def save_config_fields(updates, config_json_path=f"{HOME_DIR}/duck_config.json",
@@ -14,6 +20,11 @@ def save_config_fields(updates, config_json_path=f"{HOME_DIR}/duck_config.json",
     bad write is always recoverable. Returns the backup path (or None if there was no
     existing file). Used by the offset/IMU-trim tools to persist a single field
     without disturbing the rest of ~/duck_config.json."""
+    with _SAVE_LOCK:
+        return _save_config_fields_locked(updates, config_json_path, backup)
+
+
+def _save_config_fields_locked(updates, config_json_path, backup):
     try:
         cfg = json.load(open(config_json_path, "r"))
     except FileNotFoundError:
@@ -25,7 +36,7 @@ def save_config_fields(updates, config_json_path=f"{HOME_DIR}/duck_config.json",
     cfg.update(updates)
     # Write-then-rename: this file holds the duck's mechanical zero, and a duck can lose
     # power at any moment. A reader only ever sees the old file or the complete new one.
-    tmp_path = f"{config_json_path}.tmp{os.getpid()}"
+    tmp_path = f"{config_json_path}.tmp{os.getpid()}-{threading.get_ident()}"
     try:
         with open(tmp_path, "w") as f:
             json.dump(cfg, f, indent=2)

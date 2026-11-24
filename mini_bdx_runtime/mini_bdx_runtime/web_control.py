@@ -55,12 +55,19 @@ def _finite_float(text):
     return value
 
 
+def _sane_int(text):
+    value = int(text)
+    if abs(value) > 10 ** 12:             # float(10**400) overflows deep in the loop
+        raise ValueError("number out of range")
+    return value
+
+
 def _parse_object(body_bytes):
     """Decode a POST body into a dict, or raise ValueError. NaN and infinity are refused
     here, once, for every route: Python's json accepts them by default, and one of them
     in a stick, trim or tuning value would flow through the obs into the motor targets."""
     d = json.loads(body_bytes or b"{}", parse_constant=_reject_constant,
-                   parse_float=_finite_float)
+                   parse_float=_finite_float, parse_int=_sane_int)
     if not isinstance(d, dict):
         raise ValueError("expected a JSON object")
     return d

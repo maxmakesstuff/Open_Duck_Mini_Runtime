@@ -81,8 +81,10 @@ class HWI:
         self.servo_voltages = {}
 
     def set_kps(self, kps):
+        # Remember the gains only once the servos have them: read_battery_handoff
+        # re-applies self.kps, and must never apply gains the servos did not take.
+        self.io.set_kps(list(self.joints.values()), kps)
         self.kps = kps
-        self.io.set_kps(list(self.joints.values()), self.kps)
 
     def set_kds(self, kds):
         self.kds = kds

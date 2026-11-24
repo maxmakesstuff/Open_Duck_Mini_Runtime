@@ -24,7 +24,7 @@ def clean_config(cfg):
     for key, (lo, hi) in LIMITS.items():
         try:
             v = float(cfg.get(key, out[key]))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
         if math.isfinite(v):
             out[key] = min(hi, max(lo, v))
@@ -65,7 +65,7 @@ class CommandShaper:
         try:
             if not math.isfinite(float(value)):
                 return False
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return False
         self.cfg = clean_config({**self.cfg, key: value})
         return True

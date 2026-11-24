@@ -397,6 +397,10 @@ class RLWalk:
         # None | "reflex" | "recover" | "getup" | "balance" | "switch"
         self._activity = None
         self._soft = False                # servo stiffness currently lowered
+        # The servos hold (or hang in) a pose the walk policy must not start from:
+        # after a soft landing, a stopped get-up or recovery glide, or a policy swap
+        # while paused. The next resume then glides to the stance first.
+        self._needs_recover = False
         self._balance_until = 0.0
         self._switch_until = 0.0
         self._acc_window = deque(maxlen=50)
@@ -452,16 +456,20 @@ class RLWalk:
         self.hwi.set_position_all(
             make_action_dict(self.motor_targets, list(self.hwi.joints.keys())))
 
-    def _reset_policy_state(self):
-        """Give the walk policy the clean start of a fresh boot."""
+    def _reset_policy_history(self):
         self.last_action = np.zeros(self.num_dofs)
         self.last_last_action = np.zeros(self.num_dofs)
         self.last_last_last_action = np.zeros(self.num_dofs)
         self.imitation_i = 0
         self.imitation_phase = np.array([1.0, 0.0])
+        self.shaper.reset()
+
+    def _reset_policy_state(self):
+        """Give the walk policy the clean start of a fresh boot. Only call this when
+        the servos ARE at the stance pose: it declares the stance as the last target."""
+        self._reset_policy_history()
         self.motor_targets = np.array(self.init_pos, dtype=float)
         self.prev_motor_targets = self.motor_targets.copy()
-        self.shaper.reset()
 
     def _end_tick(self, t):
         self._note_control_tick()
@@ -535,10 +543,16 @@ class RLWalk:
         slot, policy = taken
         self._session_tuning[old_id] = self._live_tuning()
         self.policy = policy
-        self._reset_policy_state()
+        if self.paused:
+            # The servos hold whatever pose the pause froze. Keep the targets as
+            # they are (the speed limit and a stance glide measure from them) and
+            # let the next resume glide to the stance before the new policy starts.
+            self._reset_policy_history()
+            self._needs_recover = True
+        else:
+            self._reset_policy_state()    # standing at zero amplitude = the stance
         self._apply_slot_tuning(slot.id)
-        if not self.paused:
-            self.action_scale = 0.0       # the new policy's amplitude fades in
+        self.action_scale = 0.0           # the new policy's amplitude fades in
         self.blackbox.meta["policy"] = slot.id
         self.blackbox.mark("switch", slot.id)
         self._save_async({"policies": self.policy_manager.config_fields()})
@@ -559,20 +573,24 @@ class RLWalk:
         c = self.reflex.cfg
         kps = [float(c["soft_kp"])] * self.num_dofs
         kps[5:9] = [float(c["soft_kp_head"])] * 4
-        try:
-            self.hwi.set_kps(kps)
-            self._soft = True
-        except Exception as e:  # noqa: BLE001
-            print(f"[reflex] could not lower the stiffness: {e}")
+        self._needs_recover = True        # whatever the write does: no plain resume
+        for attempt in (1, 2):
+            try:
+                self.hwi.set_kps(kps)
+                self._soft = True
+                return
+            except Exception as e:  # noqa: BLE001
+                print(f"[reflex] could not lower the stiffness (try {attempt}): {e}")
 
     def _stiffen(self):
-        try:
-            self.hwi.set_kps(list(self._kps_full))
-            self._soft = False
-            return True
-        except Exception as e:  # noqa: BLE001
-            print(f"[reflex] could not restore the stiffness: {e}")
-            return False
+        for attempt in (1, 2):
+            try:
+                self.hwi.set_kps(list(self._kps_full))
+                self._soft = False
+                return True
+            except Exception as e:  # noqa: BLE001
+                print(f"[reflex] could not restore the stiffness (try {attempt}): {e}")
+        return False
 
     def _begin_reflex(self, now, event):
         self._activity = "reflex"
@@ -613,13 +631,18 @@ class RLWalk:
         if self.tilt.tilt_deg > RECOVER_MAX_TILT_DEG:
             self._notify("Stand the duck upright first (or use GET UP).")
             return False
-        pos, _ = self._read_joints()
-        if pos is None:
-            self._notify("Cannot read the joints; try again.")
-            return False
-        self._write_targets(np.clip(pos, JOINT_LO, JOINT_HI))   # goal = where it is
-        if not self._stiffen():
-            return False
+        if self._soft:
+            pos, _ = self._read_joints()
+            if pos is None:
+                self._notify("Cannot read the joints; try again.")
+                return False
+            self._write_targets(pos)        # goal = exactly where it is, then stiffen
+            if not self._stiffen():
+                self._notify("Could not stiffen the servos; try again.")
+                return False
+        # Not soft: the servos already hold motor_targets; glide on from there.
+        if self.offset_tuner.holding:
+            self.offset_tuner.release()
         self._activity = "recover"
         self.paused = False
         return True
@@ -634,6 +657,7 @@ class RLWalk:
             self._reset_policy_state()
             self.action_scale = 0.0
             self._activity = None
+            self._needs_recover = False
             self.fall_detector.reset(now)
             self.reflex.rearm()
             self._notify("Back in stance. Walking again.")
@@ -688,6 +712,9 @@ class RLWalk:
             return False
         if not auto and not (self.paused or self.fall_detector.fallen):
             self._notify("Pause first: the get-up only starts from a standstill.")
+            return False
+        if not self._lying():
+            self._notify("The get-up only starts with the duck lying down.")
             return False
         if self._getup_policy is None:
             self._load_getup_policy()
@@ -745,6 +772,7 @@ class RLWalk:
             # Standing: let the WALK policy balance at zero command instead of
             # freezing in a pose (leftover momentum tips a frozen duck over).
             self._reset_policy_state()
+            self._needs_recover = False
             self.fall_detector.reset(now)
             self.reflex.rearm()
             self._activity = "balance"
@@ -757,7 +785,10 @@ class RLWalk:
                     and self._getup_attempts < self.getup_cfg["max_auto_attempts"]):
                 self._end_getup_take()
                 self._activity = None
-                self._start_getup(now, auto=True)
+                # A refused retry (switched off meanwhile, policy changed, a dropped
+                # joint read) must end paused and soft, never as a walking tick.
+                if not self._start_getup(now, auto=True):
+                    self._abort_getup(ctl.result)
             else:
                 self._abort_getup(ctl.result)
 
@@ -803,11 +834,11 @@ class RLWalk:
         if self._activity == "reflex":
             return                          # already heading for the floor
         if self._activity == "recover":
-            self._activity = None
-            self.paused = True
+            self._activity = None           # _needs_recover stays set: the next A
+            self.paused = True              # continues the glide, it does not walk
             print("PAUSE")
             return
-        if self.paused and self._soft:
+        if self.paused and (self._soft or self._needs_recover):
             if self._begin_recover(t):
                 self._auto_getups = 0
                 self._walk_since = t
@@ -1132,7 +1163,7 @@ class RLWalk:
                 elif key.startswith("slew_"):
                     if not self.shaper.set(key[len("slew_"):], v):
                         print(f"[walk] ignoring bad setting {key}={v!r}")
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, OverflowError):
                 print(f"[walk] ignoring bad setting {key}={v!r}")
 
     def _governor_config_dict(self):
@@ -1501,7 +1532,8 @@ class RLWalk:
                 # ramp action_scale toward its web-set target (no sudden amplitude jump);
                 # a policy swap fades it to zero first (see _service_policy_switch)
                 scale_goal = self._action_scale_target
-                if self._activity == "switch" and t >= self._switch_until:
+                if (self._activity == "switch" and not self.paused
+                        and t >= self._switch_until):
                     scale_goal = 0.0
                 if self.action_scale != scale_goal:
                     self.action_scale += float(np.clip(
@@ -1542,6 +1574,8 @@ class RLWalk:
                 feet = self.feet_contacts.get()
                 if self.fall_detector.update(feet, t):
                     self.paused = True
+                    self._activity = None       # ends a balance / pending swap too
+                    self._end_getup_take()
                     if self.recorder.state == "playing":
                         self.recorder.state = "idle"  # stop playback if we fell
                     print("⚠ FALL DETECTED — auto-paused. Right the duck, then "

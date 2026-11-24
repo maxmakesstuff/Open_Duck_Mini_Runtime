@@ -70,7 +70,7 @@ def clean_tuning(d):
             continue
         try:
             v = float(d[key])
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
         if v != v or v in (float("inf"), float("-inf")):
             continue
@@ -201,7 +201,8 @@ class PolicyManager:
         self._pending_policy = None
         self._job = 0
         # {id: {key: value}} - values the user tuned and saved for that slot
-        self.tuning = {sid: clean_tuning(t) for sid, t in (tuning or {}).items()
+        tuning = tuning if isinstance(tuning, dict) else {}
+        self.tuning = {str(sid): clean_tuning(t) for sid, t in tuning.items()
                        if isinstance(t, dict)}
 
     # ------------------------------------------------------------ queries ----

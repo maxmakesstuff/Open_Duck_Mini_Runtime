@@ -136,22 +136,35 @@ def main(argv=None):
         t0 = time.time()
         total = args.cycles * period
         samples = 0
-        while True:
-            t = time.time() - t0
-            want = bob_offset(t, period, amplitude) if t < total else 0.0
-            sent = [limit_step(s, want, MAX_STEP_DEG) for s in sent]
-            io.set_goal_position({kid: s0 + off / per_unit
-                                  for kid, s0, off in zip(knee_ids, start, sent)})
-            for n, v in volts().items():
-                if v < lowest[n]:
-                    lowest[n] = v
-            samples += 1
-            if t >= total and all(abs(s) < 1e-6 for s in sent):
-                break
-            if t > total + 5.0:              # never loop forever
-                break
+        try:
+            while True:
+                t = time.time() - t0
+                want = bob_offset(t, period, amplitude) if t < total else 0.0
+                sent = [limit_step(s, want, MAX_STEP_DEG) for s in sent]
+                io.set_goal_position({kid: s0 + off / per_unit
+                                      for kid, s0, off in zip(knee_ids, start, sent)})
+                for n, v in volts().items():
+                    if v < lowest[n]:
+                        lowest[n] = v
+                samples += 1
+                if t >= total and all(abs(s) < 1e-6 for s in sent):
+                    break
+                if t > total + 5.0:          # never loop forever
+                    break
+        finally:
+            # Whatever happened (a read error, Ctrl+C): step the knees back to where
+            # they started, at the same gentle rate, never in one jump.
+            for _ in range(int(MAX_AMPLITUDE_DEG / MAX_STEP_DEG) + 2):
+                if all(abs(s) < 1e-6 for s in sent):
+                    break
+                sent = [limit_step(s, 0.0, MAX_STEP_DEG) for s in sent]
+                try:
+                    io.set_goal_position({kid: s0 + off / per_unit
+                                          for kid, s0, off in zip(knee_ids, start, sent)})
+                    time.sleep(0.02)
+                except Exception:  # noqa: BLE001
+                    break
         rate = samples / max(1e-6, time.time() - t0)
-        io.set_goal_position(dict(zip(knee_ids, start)))
 
         rows, verdict = summarise(rest, lowest)
         print(f"\nUnder load ({samples} readings, {rate:.0f} per second):")

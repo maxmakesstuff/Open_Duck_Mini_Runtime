@@ -4,7 +4,7 @@ New in the next release: selectable walk policies, a soft landing when the duck 
 a get-up, and a black-box recorder to tune all of it with real data.
 
 **Status: built and tested off-robot only.** Every part runs on a simulated duck (the
-real walk loop on a fake servo bus, 125 new tests) and the real policy files load and run.
+real walk loop on a fake servo bus, 136 new tests) and the real policy files load and run.
 Nothing here has moved a real duck yet. The first test below is that step.
 
 With no new settings, the walk is unchanged: the servo commands are identical to the
@@ -82,13 +82,16 @@ python scripts/analyze_falls.py ~/Downloads/*.npz --suggest
 - TUNE → Safety → **Active**. Tip the duck over again.
 - **Pass:** the legs stop kicking and go limp before or at the impact; the banner shows
   FALLEN. Stand the duck up, press **RESUME** (or A): it stiffens, glides to its stance
-  and walks on. Pressing RESUME while it still lies down is refused, on purpose.
+  and walks on. Pressing RESUME while it still lies down is refused, on purpose. A
+  second A during the glide stops it; the next A continues the glide.
 - Walk normally for a few minutes. It must never go limp while walking. If it does, tap
   MARK, go back to Observe and raise the thresholds.
 
 ### 7. The dk5426 walker (10 min, duck supported at first)
-- TUNE → Policy → **dk5426 walker**. The duck stands still for about a second, then
-  switches. Start with a hand under it.
+- Pause first (A), then TUNE → Policy → **dk5426 walker**, then resume: the duck glides
+  to its stance and the new policy fades in. Start with a hand under it. Later switches
+  can be done while walking (it stands still for about a second, then switches); watch
+  "Slowest step" in Health the first time, since loading a policy may stall the loop.
 - It runs at action scale 0.25 (what it was trained with). If it is too lively, lower it
   in TUNE → Walk and save; the stock policy keeps its own value.
 - Record a take on the same route as in step 3 and compare:
@@ -101,7 +104,8 @@ python scripts/analyze_falls.py ~/Downloads/*take*.npz
 - TUNE → Safety → Get up → **Get-up available: ON**.
 - Once per duck: put it on the floor, tap **HOLD STANCE**, wait until it stands still,
   tap **CAPTURE**. "Standing reference: captured" must appear.
-- Lay the duck face-down. Tap **GET UP** on the main screen (gamepad: RB + B).
+- Pause, lay the duck face-down. Tap **GET UP** on the main screen (gamepad: RB + B).
+  It only starts while the duck is lying down.
   **A stops it at any time** and the joints go soft.
 - **Pass:** it stands up, the banner shows BALANCING for 3 s, then you have control.
 - If it does not stand within 10 s it stops by itself and goes soft. Download the
@@ -121,6 +125,14 @@ python scripts/analyze_falls.py ~/Downloads/*take*.npz
   hold; a Discord user reports it working after runtime changes that are built in here
   (smoothing, gentle start, shorter standing check, walk policy balancing afterwards)
   and after fixing their leg wiring.
+
+## Reviewed
+
+An independent review of the motor-control code found six bugs before any hardware run,
+two of which could have moved joints abruptly at full stiffness (a refused get-up retry
+falling through to the walk policy, and a stopped recovery glide followed by a plain
+resume). All six are fixed and pinned by tests; a gyro spike filter, a lock around every
+config save and stricter input checks came out of the same review.
 
 ## Known limits
 
