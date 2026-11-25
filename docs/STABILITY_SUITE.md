@@ -140,6 +140,8 @@ config save and stricter input checks came out of the same review.
 - The soft landing lowers the stiffness of all servos in one bus write. A servo from a
   newer firmware batch can disturb such grouped writes (seen once on a replaced knee
   servo); step 6 shows at once whether the write gets through.
+  The first test runs on the IHK duck, whose servos are all from the same firmware
+  batch, so this is not expected there.
 - Voltages cannot be read while walking with this servo library; the Health tab shows
   the last reading taken while paused.
 - The duck's clock is not set, so recording names carry the wrong date. Their order is
