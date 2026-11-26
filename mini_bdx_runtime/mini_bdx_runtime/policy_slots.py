@@ -27,9 +27,10 @@ ACTION_SIZE = 14
 
 # Keys a slot may carry its own value for. Everything else in the walk tuning is a
 # property of the duck, not of the policy.
-TUNING_KEYS = ("action_scale", "phase_frequency_factor_offset")
+TUNING_KEYS = ("action_scale", "phase_frequency_factor_offset", "steer_trim")
 TUNING_LIMITS = {"action_scale": (0.0, 0.6),
-                 "phase_frequency_factor_offset": (-0.5, 0.5)}
+                 "phase_frequency_factor_offset": (-0.5, 0.5),
+                 "steer_trim": (-0.5, 0.5)}
 
 
 class Slot:

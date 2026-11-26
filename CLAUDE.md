@@ -12,7 +12,7 @@ against the current code before acting.
 
 ---
 
-## Current state (last updated 2026-11-24, branch `feature/stability-suite`)
+## Current state (last updated 2026-11-26, branch `feature/stability-suite`)
 
 Two physical robots ("ducks"), identical hardware. **Both are now fully commissioned and
 walking stably.** Duck 2 was brought up end-to-end this session — full `transfer.command`,
@@ -39,7 +39,25 @@ Recent commits (`git log --oneline`): stability levers `0cdc069`, config baselin
 `acfb147`, captive portal `2754311`+`bd146d9`, German manual `08e2010`, second-duck
 deploy `f8c7635`. The pre-session baseline is `37c7638`.
 
-### New 2026-11-24, branch `feature/stability-suite` — **NOT yet tested on hardware**
+### 2026-11-26: first hardware session of the stability suite (one duck)
+
+Results, numbers and what is still untested: `docs/STABILITY_SUITE.md`, section "First
+test results". What changed in the code that evening, all found from the black-box
+recordings:
+
+- `imu_sanity.py`: the BNO055 returns a single full-scale sample every few seconds; the
+  IMU reader (`raw_imu.py`) drops and re-reads it. Count: `imu.glitches`.
+- The stability governor takes its lean from `self.tilt` (the gyro-fused estimate), no
+  longer from the bare accelerometer, which made it throttle the stick 87 % of the time.
+- `rest_pose.py` + `policies.rest_straight`: optional straight stance while idle (the
+  loop fades `action_scale` to 0; the policy keeps running). **Not yet run on hardware.**
+- `steer_trim` (per policy, third tuning key next to `action_scale` and the gait
+  offset): constant turn command while driving. **Not yet run on hardware.**
+- Lesson worth keeping: both walk policies ignore the accelerometer's direction almost
+  completely (replayed through the ONNX files). A standing pose or a drift cannot be
+  fixed by rotating or trimming the IMU; check with the ONNX file before assuming so.
+
+### New 2026-11-24, branch `feature/stability-suite`
 
 **Stability suite**: policy slots, early fall detection with a soft landing, a get-up, a
 black-box recorder, a stick ramp and loop-health counters. Read `docs/STABILITY_SUITE.md`

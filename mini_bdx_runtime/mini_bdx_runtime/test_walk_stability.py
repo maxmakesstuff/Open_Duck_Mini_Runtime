@@ -902,6 +902,124 @@ def test_governor_ignores_foot_impacts_but_still_slows_a_real_lean():
     run_duck(scenario, config=GOVERNOR_ON)
 
 
+def _level_imu(duck, lean=None):
+    lean = lean if lean is not None else {"deg": 0.0, "gyro": 0.0}
+
+    def read():
+        th = math.radians(lean["deg"])
+        return {"gyro": np.array([0.0, lean["gyro"], 0.0]),
+                "accelero": np.array([-G * math.sin(th), 0.0, G * math.cos(th)])}
+    duck.imu.get_data = read
+    return lean
+
+
+def _leg_offsets(duck, write):
+    """Largest distance of the leg servos from the stance pose in one bus write."""
+    return max(abs(write[duck.hwi.joints[j]] - duck.hwi.init_pos[j] - OFFSETS[j])
+               for j in duck.hwi.joints if "neck" not in j and "head" not in j)
+
+
+def test_rest_pose_is_off_by_default_and_fades_to_the_stance_when_enabled():
+    def scenario(duck, post, state):
+        _level_imu(duck)
+        yield from ticks(200)                        # 4 s idle with the feature off
+        assert abs(_leg_offsets(duck, duck.hwi.io.writes[-1]) - 0.125) < 1e-9
+        assert state()["rest"] == {"enabled": False, "resting": False}
+        setting(post, "policy", "rest_straight", True)
+        start = len(duck.hwi.io.writes)
+        yield from ticks(250)                        # calm 1.5 s, then the slow fade
+        assert _leg_offsets(duck, duck.hwi.io.writes[-1]) < 1e-9, "not at the stance"
+        fade = duck.hwi.io.writes[start:]
+        assert max_step(fade) <= 0.5 * 0.004 + 1e-9, "the fade must be slow"
+        assert state()["rest"] == {"enabled": True, "resting": True}
+        assert len(duck.policy.obs) > 400, "the policy keeps running while resting"
+        wait_real(lambda: config().get("policies", {}).get("rest_straight") is True,
+                  "the choice to be saved")
+        assert config()["joints_offsets"] == OFFSETS
+    run_duck(scenario)
+
+
+def test_rest_pose_wakes_on_the_stick_and_on_a_push():
+    def scenario(duck, post, state):
+        lean = _level_imu(duck)
+        yield from ticks(250)
+        assert _leg_offsets(duck, duck.hwi.io.writes[-1]) < 1e-9
+        idle = duck.xbox_controller.get_last_command
+        duck.xbox_controller.get_last_command = _stick_forward(duck)
+        start = len(duck.hwi.io.writes)
+        yield from ticks(20)                         # 0.4 s
+        assert abs(_leg_offsets(duck, duck.hwi.io.writes[-1]) - 0.125) < 1e-9, "not awake"
+        assert max_step(duck.hwi.io.writes[start:]) <= 0.5 * 0.02 + 1e-9
+        duck.xbox_controller.get_last_command = idle
+        yield from ticks(250)
+        assert _leg_offsets(duck, duck.hwi.io.writes[-1]) < 1e-9, "rests again"
+        lean["gyro"] = 2.0                           # someone bumps the duck
+        yield from ticks(3)
+        lean["gyro"] = 0.0
+        yield from ticks(20)
+        assert abs(_leg_offsets(duck, duck.hwi.io.writes[-1]) - 0.125) < 1e-9, "push"
+        assert not state()["rest"]["resting"]
+    run_duck(scenario, config={"policies": {"rest_straight": True}})
+
+
+def test_rest_pose_stays_out_of_a_policy_switch_and_a_pause():
+    def scenario(duck, post, state):
+        _level_imu(duck)
+        yield from ticks(250)
+        assert state()["rest"]["resting"]
+        setting(post, "policy", "active", "dk5426-walk")
+        yield from wait_for(lambda: state()["policy"]["active"] == "dk5426-walk",
+                            "the switch")
+        yield from ticks(5)
+        press_a(duck)
+        yield from ticks(5)
+        assert duck.paused and not duck.rest_pose.resting
+    run_duck(scenario, config={"policies": {"rest_straight": True}})
+
+
+def test_steering_trim_is_added_only_while_driving_and_is_saved_per_policy():
+    def scenario(duck, post, state):
+        trim_before = config().get("imu_trim")
+        setting(post, "walk", "steer_trim", 0.2)
+        yield from ticks(5)
+        assert duck.policy.obs[-1][8] == 0.0, "idle: no turn command from the trim"
+        duck.xbox_controller.get_last_command = _stick_forward(duck)
+        yield from ticks(5)
+        assert abs(duck.policy.obs[-1][6] - 0.15) < 1e-9
+        assert abs(duck.policy.obs[-1][8] - 0.2) < 1e-9
+        assert state()["walk_params"]["steer_trim"] == 0.2
+        setting(post, "walk", "steer_trim", 99)       # absurd: clamped
+        yield from ticks(3)
+        assert abs(duck.policy.obs[-1][8] - 0.5) < 1e-9
+        setting(post, "walk", "steer_trim", 0.2)
+        yield from ticks(3)
+        post("/api/setting", {"group": "walk", "action": "save"})
+        yield from ticks(3)
+        wait_real(lambda: config().get("steer_trim") == 0.2, "the stock trim to be saved")
+        assert config()["joints_offsets"] == OFFSETS and config().get("imu_trim") == trim_before
+    run_duck(scenario)
+
+
+def test_soft_landing_recording_contains_the_joint_positions():
+    clear_logs()
+
+    def scenario(duck, post, state):
+        imu = Imu(duck)
+        yield from ticks(5)
+        imu.fall()
+        for _ in range(400):
+            if duck.paused:
+                break
+            yield
+        yield from ticks(200)
+        wait_real(lambda: logs("reflex"), "the recording")
+        cols, _ = flight_recorder.load(os.path.join(LOG_DIR, logs("reflex")[0]))
+        soft = cols["mode"] == flight_recorder.MODE_CODES["reflex"]
+        assert soft.sum() > 5
+        assert np.all(np.abs(cols["pos"][soft]).max(axis=1) > 0.1), "positions missing"
+    run_duck(scenario, config=REFLEX_ON)
+
+
 def test_default_config_changes_nothing_about_the_walk():
     """No new config keys: every tick's servo write equals init + action * scale,
     exactly as before the suite."""

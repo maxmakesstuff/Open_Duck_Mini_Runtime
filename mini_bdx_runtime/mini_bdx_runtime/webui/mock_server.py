@@ -82,6 +82,7 @@ REFLEX = fall_reflex.FallReflex()
 GETUP = getup_mod.clean_config({})
 GETUP_RUN = {"t0": None, "result": None}
 SLEW = command_shaper.clean_config({})
+REST = {"enabled": False}
 BLACKBOX = {"saved": 0, "last_file": "", "take_t0": None}
 NOTE = {"text": "", "until": 0.0}
 FAKE_LOGS = [
@@ -148,6 +149,8 @@ def _suite_state(t, pitch, roll, fallen):
                  "worst_ms": 41.0, "read_failures": 0, "ticks": int(t * 50),
                  "imu_repeat_pct": 6.0, "imu_longest_repeat": 2, "imu_glitches": 12},
         "command_slew": dict(SLEW),
+        "rest": {"enabled": REST["enabled"],
+                 "resting": bool(REST["enabled"] and not PAUSED["v"] and not fallen)},
         "servo_voltages": volts,
     }
 
@@ -245,6 +248,7 @@ def build_state():
             **{k: WALK[k] for k in ("action_scale", "action_scale_target",
                                     "velocity_clip", "max_motor_velocity_rad_s")},
             "gait_offset": round(GAIT["v"], 3),
+            "steer_trim": round(WALK.get("steer_trim", 0.0), 3),
             "governor": dict(WALK["governor"]),
         },
         "camera": {"available": True, "controls": dict(CAM)},
@@ -311,6 +315,11 @@ def _handle_suite_setting(body):
             POLICY.update(state="error", message=f"cannot use: {val}")
         elif val != POLICY["active"]:
             POLICY.update(pending=val, state="loading", message="", t=time.time())
+        return True
+    if group == "policy" and key == "rest_straight":
+        REST["enabled"] = val is True or val == "straight"
+        note("Rest pose: straight stance when idle." if REST["enabled"]
+             else "Rest pose: the policy's own.")
         return True
     if group == "safety":
         if action == "reset":
@@ -407,6 +416,8 @@ def handle_setting(body):
         elif key.startswith("governor_"):
             gk = key[len("governor_"):]
             WALK["governor"][gk] = bool(val) if gk == "enabled" else float(val)
+        elif key == "steer_trim":
+            WALK["steer_trim"] = max(-0.5, min(0.5, float(val)))
         elif key in WALK:
             WALK[key] = val
     elif group == "camera" and key in CAM:

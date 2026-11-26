@@ -221,9 +221,14 @@ saved until you press **Save**:
 
 - **Walk mode** — five tabs:
   - **Policy** — pick the walk policy. The duck stands still for a moment, switches and
-    remembers the choice.
-  - **Walk** — action scale and gait offset (kept per policy), joint speed limit, stick
-    ramp, the stability governor, and the **IMU trim** card.
+    remembers the choice. Below it, **When the sticks are idle**: keep the policy's own
+    standing pose (some stand crooked or look up) or choose **Straight stance**, where
+    the duck eases into an even stance after about 1.5 s and the policy returns the
+    moment you touch a stick or nudge the duck.
+  - **Walk** — action scale, gait offset and **steering trim** (all kept per policy),
+    joint speed limit, stick ramp, the stability governor, and the **IMU trim** card.
+    Steering trim: if the duck curves with only the forward stick, move it until it
+    walks straight, then save.
   - **Safety** — soft landing (Off / Observe / Active) with a gauge of how far the duck
     leans, and the get-up.
   - **Health** — recorder (MARK, takes, download), late control steps, servo voltages.

@@ -3,9 +3,13 @@
 New in the next release: selectable walk policies, a soft landing when the duck falls,
 a get-up, and a black-box recorder to tune all of it with real data.
 
-**Status: built and tested off-robot only.** Every part runs on a simulated duck (the
-real walk loop on a fake servo bus, 138 new tests) and the real policy files load and run.
-Nothing here has moved a real duck yet. The first test below is that step.
+**Status: first test on a real duck done (2026-11-26), on one of our two ducks.** Policy
+switching, the soft landing, the black box and the Health tab ran on hardware; the
+results are in [First test results](#first-test-results-2026-11-26). The get-up and the
+supply test under load have not run on hardware yet, and neither have the rest pose and
+the steering trim, which were built from that evening's data. Off-robot, every part runs
+on a simulated duck (the real walk loop on a fake servo bus) and the real policy files
+load and run.
 
 With no new settings, the walk is unchanged: the servo commands are identical to the
 previous version. Soft landing starts in **Observe** (it only watches), the get-up and
@@ -22,6 +26,9 @@ the stick ramp start **off**.
 | **Black box** | Keeps the last 20 s of everything the duck measured. Falls, reflex triggers, get-ups and policy switches save themselves; MARK saves on demand; a take records until stopped. Download in TUNE → Health. | On |
 | **Stick ramp** | Turns a slammed stick into a short ramp. | Off |
 | **Loop health** | Counts control steps that ran late and failed servo reads. | On |
+| **Rest pose** | Every policy stands in its own, often crooked pose at zero command. "Straight stance" (TUNE → Policy) fades the policy out after 1.5 s without stick input, so the duck stands in the plain stance, and fades it back in on a stick move or a push. | Policy's own pose |
+| **Steering trim** | A constant turn command added while driving, to cancel a walk that curves by itself (TUNE → Walk). Kept per policy. | 0 |
+| **Sensor check** | Drops impossible IMU samples before they reach the policy and counts them (Health: "bad dropped"). | On |
 | **Servo supply** | Per-servo voltage while paused (TUNE → Health), and `voltage_sag_test.py` for the reading under load. | On |
 
 ## Deploy
@@ -113,18 +120,65 @@ python scripts/analyze_falls.py ~/Downloads/*take*.npz
 - Leave "Start by itself after a fall" off until the manual get-up works several times
   in a row.
 
-## What the first test will tell us
+## First test results (2026-11-26)
 
-- **Thresholds for soft landing.** The defaults (earliest 20°, predicted 45°, always 40°)
-  are estimates. In simulation of a tipping duck they fire at about 30° lean, 0.12–0.16 s
-  before the floor. Real numbers come from steps 3 to 5.
-- **Whether late control steps or supply sag play a part in the falls.** Until now
-  neither was measured.
-- **Whether the dk5426 walker beats the tuned stock walk on our ducks.**
-- **Whether the get-up works on our ducks.** On the authors' own robot logs it did not
-  hold; a Discord user reports it working after runtime changes that are built in here
-  (smoothing, gentle start, shorter standing check, walk policy balancing afterwards)
-  and after fixing their leg wiring.
+One duck, stock policy and dk5426 walker, about 15 minutes of recorded walking and 17
+recorded falls. Numbers come from the black-box recordings, read with
+`scripts/analyze_falls.py`.
+
+**Two faults found in the recordings and fixed the same evening**
+
+- **Corrupted IMU samples.** About every 3 to 4 seconds the BNO055 returned one sample
+  with a single axis at full scale (gyro about 35 rad/s, accelerometer about 320 m/s²).
+  They went straight into the policy, whose output then jumped to about six times its
+  normal step for two control steps. `imu_sanity.py` now drops such samples in the IMU
+  reader. This removed the kicks; it did not change how often the duck fell.
+- **The stability governor throttled the stick almost all the time.** It judged lean
+  from the bare accelerometer, which while walking mostly shows foot impacts: more than
+  10° on 71 % of control steps, when the real lean exceeded 10° on 1 %. It cut the drive
+  commands on 87 % of steps, by 27 % on average, with the amount changing every step. It
+  now uses the gyro-fused lean of the soft landing and stays out of normal walking.
+  With it, the same duck was driven about twice as hard and leaned no more than before.
+  **If you tuned your walk with the old governor, expect the duck to feel faster.**
+
+**Soft landing**
+
+- With the default thresholds, all 5 falls that happened during normal walking were
+  detected 0.16 to 0.28 s before the floor, and there was no false alarm in about 8
+  minutes of walking. The thresholds were left as they are.
+- In Active, 6 hand-tipped falls (both ways about the pitch axis, both sides) all
+  triggered at 30 to 37° lean; the joints were soft 0.06 s later, 0.14 to 0.20 s before
+  the duck passed 70°. Resume was refused while lying and glided cleanly once upright.
+- Not shown by the data: whether the landing is gentler for the servos. The jolt measured
+  at the body is the same with and without; the IMU cannot see servo load.
+
+**Policies**
+
+| While moving | Stock | dk5426 walker |
+|---|---|---|
+| Falls | 1 in 53 s | 0 in 103 s |
+| Typical lean | 3.5° | 4.5° |
+| Lean, worst 1 % | 8.6° | 14.1° |
+| Largest lean | 12.0° | 17.4° |
+
+- The stock walk fell about once every one to two minutes of hard driving, always during
+  turns. The dk5426 walker did not fall. It leans further and recovers.
+- The dk5426 walker curved by about 16°/s with only the forward stick, and stood with the
+  body rolled about 12° when idle. Both are properties of the policy on this duck:
+  replaying the recording through the ONNX file with the IMU reading rotated by 12°
+  moved its output by less than half a degree, and its standing pose is the same for any
+  accelerometer reading. Hence the rest pose option and the steering trim, not a sensor
+  correction.
+- Switching policies was clean: no slow control step, no jump in the servo commands.
+
+**Other measurements**
+
+- Control loop: a step takes about 10 ms of its 20 ms; 0.1 to 0.5 % of steps ran late.
+  No failed servo read in the whole session.
+- IMU pitch trim: +0.6° and −3.5° gave the same posture and lean with the stock walk.
+
+**Still open:** the get-up (step 8), the supply test under load (step 2), the rest pose
+and the steering trim on hardware, and all of it on the second duck.
 
 ## Reviewed
 
@@ -139,9 +193,11 @@ config save and stricter input checks came out of the same review.
 - The get-up only works from face-down.
 - The soft landing lowers the stiffness of all servos in one bus write. A servo from a
   newer firmware batch can disturb such grouped writes (seen once on a replaced knee
-  servo); step 6 shows at once whether the write gets through.
-  The first test runs on the IHK duck, whose servos are all from the same firmware
-  batch, so this is not expected there.
+  servo); step 6 shows at once whether the write gets through. After that servo was
+  flashed to the same firmware as the others, the write got through every time.
+- With "Straight stance" the policy is faded out while the duck stands. It wakes on a
+  stick move, a quick tip or a lean that grows by 6°; a very slow push below that is
+  only caught by the soft landing.
 - Voltages cannot be read while walking with this servo library; the Health tab shows
   the last reading taken while paused.
 - The duck's clock is not set, so recording names carry the wrong date. Their order is

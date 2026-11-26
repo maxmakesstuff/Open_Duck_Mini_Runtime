@@ -115,6 +115,10 @@ class DuckConfig:
             "phase_frequency_factor_offset", 0.0
         )
 
+        # Constant turn command added while driving the STOCK walk, to cancel a walk
+        # that curves by itself (-0.5..0.5). Other policies keep theirs in "policies".
+        self.steer_trim = self.json_config.get("steer_trim", 0.0)
+
         # --- stability suite (each dict is validated by the module that owns it) ---
         # Which policy to run and what the user tuned per policy (policy_slots.py).
         self.policies = self.json_config.get("policies", {})

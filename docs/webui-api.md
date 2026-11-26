@@ -51,6 +51,7 @@ Returns `offsets.html`, the joint-offset and IMU-trim calibration page (also sel
   "activity": "walk",        // walk|paused|stance|reflex|recover|getup|balance|switch
   "soft": false,             // servo stiffness currently lowered (after a soft landing)
   "tilt_deg": 4.2,           // fused gyro+accel lean, degrees
+  "rest": {"enabled": false, "resting": false},  // straight stance while idle
   "policy": {"active": "stock", "pending": null, "state": "idle", "message": "",
              "slots": [{"id": "stock", "name": "Stock walk", "kind": "walk",
                         "summary": "…", "license": "", "usable": true, "error": "",
@@ -63,7 +64,8 @@ Returns `offsets.html`, the joint-offset and IMU-trim calibration page (also sel
             "run": null, "config": {"blend": 0.5}},
   "blackbox": {"enabled": true, "taking": false, "take_s": 0.0, "saved": 0,
                "last_file": "", "error": "", "pending": 0},
-  "loop": {"late_pct": 0.4, "late_total": 3, "worst_ms": 31.0, "read_failures": 0, "ticks": 9000},
+  "loop": {"late_pct": 0.4, "late_total": 3, "worst_ms": 31.0, "read_failures": 0, "ticks": 9000,
+           "imu_repeat_pct": 0.5, "imu_longest_repeat": 1, "imu_glitches": 12},
   "command_slew": {"enabled": false, "lin_accel": 0.3, "ang_accel": 4.0, "stop_factor": 3.0},
   "servo_voltages": {"left_knee": 7.5}   // last reading taken while paused; {} until then
 }
@@ -73,6 +75,8 @@ Their settings, all over `POST /api/setting` (same "queued, not applied" rule as
 
 ```json
 {"group":"policy","key":"active","value":"dk5426-walk"}   // load, then swap at a standstill
+{"group":"policy","key":"rest_straight","value":"straight"} // or "own"; saved at once
+{"group":"walk","key":"steer_trim","value":0.2}           // -0.5..0.5, kept per policy
 {"group":"safety","key":"mode","value":"active"}          // off | observe | active
 {"group":"safety","key":"min_tilt_deg","value":18}        // any key of safety.config
 {"group":"safety","key":"reset_peaks","value":true}       // also clears the loop counters

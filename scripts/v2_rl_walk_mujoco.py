@@ -32,6 +32,7 @@ from mini_bdx_runtime.flight_recorder import (
     FlightRecorder, MODE_CODES, REFLEX_CODES,
 )
 from mini_bdx_runtime.command_shaper import CommandShaper
+from mini_bdx_runtime.rest_pose import RestPose
 from mini_bdx_runtime.loop_health import LoopHealth
 # Optional: Web UI + scanner sound. The walk still runs if these are absent.
 try:
@@ -68,6 +69,10 @@ RECOVER_MAX_TILT_DEG = 25.0
 # action_scale is ramped toward a web-set target so a live change can't step the
 # leg amplitude in one tick (motor safety). Max change per control tick:
 ACTION_SCALE_RAMP = 0.02
+# Fading into the rest pose is deliberately slow (about 1.3 s from a scale of 0.25):
+# the body swings from the policy's own stance to the plain one. Waking is fast.
+REST_FADE_RAMP = 0.004
+STEER_TRIM_LIMIT = 0.5
 
 # DPAD-LEFT hold (s) to start a whole-body recording; walk_recording.pkl persists
 # the last take across restarts (handy for events).
@@ -252,10 +257,18 @@ class RLWalk:
         self.phase_frequency_factor_offset = (
             self.duck_config.phase_frequency_factor_offset
         )
+        # Steering trim: a constant turn command added while driving, to cancel a
+        # walk that curves by itself. Belongs to the policy, like the two above.
+        try:
+            trim = float(getattr(self.duck_config, "steer_trim", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            trim = 0.0
+        self.steer_trim = float(np.clip(trim, -STEER_TRIM_LIMIT, STEER_TRIM_LIMIT))
         # Values the STOCK policy runs with; another slot may carry its own.
         self._stock_tuning = {
             "action_scale": float(self._action_scale_target),
             "phase_frequency_factor_offset": float(self.phase_frequency_factor_offset),
+            "steer_trim": float(self.steer_trim),
         }
         if self.policy_manager.active_id != policy_slots.STOCK_ID:
             self._apply_slot_tuning(self.policy_manager.active_id, ramp=False)
@@ -386,6 +399,8 @@ class RLWalk:
         self._auto_getups = 0
         self._walk_since = time.time()
         self.shaper = CommandShaper(self.duck_config.command_slew)
+        pol_cfg = self.duck_config.policies if isinstance(self.duck_config.policies, dict) else {}
+        self.rest_pose = RestPose(enabled=bool(pol_cfg.get("rest_straight", False)))
         self.loop_health = LoopHealth(self.control_freq)
         self.blackbox = FlightRecorder(
             self.control_freq, self.duck_config.flight_recorder,
@@ -503,7 +518,13 @@ class RLWalk:
     # ---------------------------------------------------------- policy switch ----
     def _live_tuning(self):
         return {"action_scale": float(self._action_scale_target),
-                "phase_frequency_factor_offset": float(self.phase_frequency_factor_offset)}
+                "phase_frequency_factor_offset": float(self.phase_frequency_factor_offset),
+                "steer_trim": float(self.steer_trim)}
+
+    def _policies_config(self):
+        """The "policies" entry of duck_config: choice, per-policy tuning, rest pose."""
+        return self.policy_manager.config_fields(
+            extra={"rest_straight": bool(self.rest_pose.enabled)})
 
     def _apply_slot_tuning(self, slot_id, ramp=True):
         """Load the values a slot runs with: this session's edits, else what was
@@ -520,6 +541,8 @@ class RLWalk:
                 self.action_scale = self._action_scale_target
         if "phase_frequency_factor_offset" in t:
             self.phase_frequency_factor_offset = float(t["phase_frequency_factor_offset"])
+        self.steer_trim = float(np.clip(float(t.get("steer_trim", 0.0)),
+                                        -STEER_TRIM_LIMIT, STEER_TRIM_LIMIT))
 
     def _service_policy_switch(self, now):
         """A requested policy loads on a background thread; once it is ready, swap it
@@ -555,7 +578,7 @@ class RLWalk:
         self.action_scale = 0.0           # the new policy's amplitude fades in
         self.blackbox.meta["policy"] = slot.id
         self.blackbox.mark("switch", slot.id)
-        self._save_async({"policies": self.policy_manager.config_fields()})
+        self._save_async({"policies": self._policies_config()})
         self._notify(f"Now running: {slot.name}")
 
     # ------------------------------------------------------------ fall reflex ----
@@ -612,7 +635,10 @@ class RLWalk:
                                         self.motor_targets + step))
         if event == "soft":
             self._go_soft()
-        self._rec_tick(now)
+        # Read the joints only once the time-critical writes are out: the recording
+        # then shows the legs giving way.
+        pos, vel = self._read_joints()
+        self._rec_tick(now, pos=pos, vel=vel)
         if self.reflex.phase == "down":
             self._activity = None
             self.paused = True
@@ -652,7 +678,8 @@ class RLWalk:
         home = np.array(self.init_pos, dtype=float)
         self._write_targets(np.clip(home, self.motor_targets - step,
                                     self.motor_targets + step))
-        self._rec_tick(now)
+        pos, vel = self._read_joints()
+        self._rec_tick(now, pos=pos, vel=vel)
         if float(np.max(np.abs(self.motor_targets - home))) < 1e-6:
             self._reset_policy_state()
             self.action_scale = 0.0
@@ -865,6 +892,14 @@ class RLWalk:
                 self._notify(self.policy_manager.message)
         if pol.get("cancel"):
             self.policy_manager.cancel()
+        if "rest_straight" in pol:
+            want = pol["rest_straight"]
+            self.rest_pose.enabled = (want is True or (
+                isinstance(want, str) and want.lower() in ("straight", "on", "true")))
+            self.rest_pose.reset()
+            self._save_async({"policies": self._policies_config()})
+            self._notify("Rest pose: straight stance when idle." if self.rest_pose.enabled
+                         else "Rest pose: the policy's own.")
 
         safety = settings.get("safety") or {}
         for key, value in safety.items():
@@ -942,6 +977,7 @@ class RLWalk:
             "loop": dict(self.loop_health.public(),
                          imu_glitches=int(getattr(self.imu, "glitches", 0) or 0)),
             "command_slew": self.shaper.public(),
+            "rest": self.rest_pose.public(),
             "servo_voltages": dict(getattr(self.hwi, "servo_voltages", {}) or {}),
         }
 
@@ -1151,6 +1187,9 @@ class RLWalk:
                     self._action_scale_target = float(np.clip(float(v), 0.0, 0.6))
                 elif key in ("gait_offset", "phase_frequency_factor_offset"):
                     self.phase_frequency_factor_offset = float(np.clip(float(v), -0.5, 0.5))
+                elif key == "steer_trim":
+                    self.steer_trim = float(np.clip(float(v), -STEER_TRIM_LIMIT,
+                                                    STEER_TRIM_LIMIT))
                 elif key == "velocity_clip":
                     self.velocity_clip = bool(v)
                 elif key == "max_motor_velocity_rad_s":
@@ -1207,7 +1246,8 @@ class RLWalk:
             "max_motor_velocity_rad_s": round(float(self.max_motor_velocity), 3),
             "stability_governor": self._governor_config_dict(),
             "command_slew": self.shaper.public(),
-            "policies": self.policy_manager.config_fields(),
+            "steer_trim": round(float(stock.get("steer_trim", 0.0)), 4),
+            "policies": self._policies_config(),
         }
         backup = save_config_fields(fields)
         print(f"[walk] SAVED walk tuning {fields} (backup {backup})")
@@ -1218,6 +1258,7 @@ class RLWalk:
         d = WALK_TUNING_DEFAULTS
         self._action_scale_target = float(d["action_scale"])
         self.phase_frequency_factor_offset = float(d["phase_frequency_factor_offset"])
+        self.steer_trim = 0.0
         self.velocity_clip = bool(d["velocity_clip"])
         self.max_motor_velocity = float(d["max_motor_velocity_rad_s"])
         g = d["stability_governor"]
@@ -1328,6 +1369,7 @@ class RLWalk:
                 "velocity_clip": bool(self.velocity_clip),
                 "max_motor_velocity_rad_s": round(float(self.max_motor_velocity), 2),
                 "gait_offset": round(float(self.phase_frequency_factor_offset), 3),
+                "steer_trim": round(float(self.steer_trim), 3),
                 "governor": self._governor_config_dict(),
             },
             antenna_anim=bool(self.antenna_anim.enabled),
@@ -1544,10 +1586,18 @@ class RLWalk:
                 if (self._activity == "switch" and not self.paused
                         and t >= self._switch_until):
                     scale_goal = 0.0
+                ramp_down = ACTION_SCALE_RAMP
+                if self.paused:
+                    self.rest_pose.reset()
+                elif self.rest_pose.resting and self._activity is None:
+                    # Nobody is driving: let the amplitude fade out, which leaves
+                    # the servos at the plain stance. Any wake fades it back in.
+                    scale_goal = 0.0
+                    ramp_down = REST_FADE_RAMP
                 if self.action_scale != scale_goal:
                     self.action_scale += float(np.clip(
                         scale_goal - self.action_scale,
-                        -ACTION_SCALE_RAMP, ACTION_SCALE_RAMP))
+                        -ramp_down, ACTION_SCALE_RAMP))
 
                 # scanner sound follows the LED even while paused; publish telemetry
                 self._couple_scanner(t)
@@ -1615,6 +1665,17 @@ class RLWalk:
                     if t >= self._switch_until and self.action_scale <= 1e-9:
                         self._activity = None
                         self._swap_policy(t)
+
+                # Rest pose (off unless enabled) and steering trim (0 unless set).
+                driving = any(abs(float(c)) > 0.01 for c in self.last_commands[:3])
+                gyro_now = (self._last_imu or {}).get("gyro")
+                self.rest_pose.update(
+                    driving, self.tilt.tilt_deg,
+                    tilt_rate(gyro_now) if gyro_now is not None else 0.0, t,
+                    allowed=self._activity is None)
+                if driving and self.steer_trim:
+                    self.last_commands[2] = float(np.clip(
+                        float(self.last_commands[2]) + self.steer_trim, -1.0, 1.0))
 
                 # Ramp the drive commands (no-op unless enabled), then throttle them
                 # if the duck is tipping (no-op unless enabled).

@@ -794,6 +794,8 @@ const STRIDE_CONTROLS=[
    help:"How far the policy swings the legs from the standing pose each step. <b>Lower</b> = smaller, calmer steps. <b>Higher</b> = bigger, livelier strides that can get twitchy. Changes ease in, no jerk."},
   {k:"gait_offset",name:"Gait speed offset",min:-0.5,max:0.5,step:0.01,
    help:"Nudges the stepping cadence. <b>Lower</b> = slower steps, <b>higher</b> = faster. Tune until the feet stop scuffing or stamping."},
+  {k:"steer_trim",name:"Steering trim",min:-0.5,max:0.5,step:0.01,
+   help:"Curves to one side with only the forward stick? This adds a constant turn while you drive, nothing while the duck stands. Move it until the duck walks straight, then save."},
 ];
 const SMOOTH_CONTROLS=[
   {k:"velocity_clip",name:"Joint speed limit",type:"tgl",
@@ -907,6 +909,12 @@ function panePolicy(s){
   return `<div class="tsec"><span class="lbl">Walk policy</span>
     <div class="sub">The network that turns your stick into steps. Pick one; the duck stands still for a moment, switches, and remembers the choice for the next start.</div>
     <div id="polList"></div></div>
+    <div class="tsec"><span class="lbl">When the sticks are idle</span>
+    <div class="sub">Every policy has its own way of standing still. Some stand crooked or look up. That is part of the policy, not a fault of your duck.</div>
+    <div class="seg" id="restSeg" data-group="policy" data-key="rest_straight">
+      <button data-val="own" class="${(s.rest||{}).enabled?"":"on"}">Policy's own pose</button>
+      <button data-val="straight" class="${(s.rest||{}).enabled?"on":""}">Straight stance</button></div>
+    <div class="thint" id="restHint"></div></div>
     <div class="tsec"><span class="lbl">Comparing two policies</span>
     <ol class="steps"><li>Start a <b>take</b> in Health and drive a fixed route.</li>
     <li>Switch policy here, record the same route again.</li>
@@ -915,7 +923,7 @@ function panePolicy(s){
 function paneWalk(s){
   const gov=((s.walk_params||{}).governor)||{};
   return `<div class="tsec"><span class="lbl">Stride</span>
-      <div class="sub">These two belong to the policy. Each policy keeps its own values.</div>
+      <div class="sub">These belong to the policy. Each policy keeps its own values.</div>
       ${rows("walk",STRIDE_CONTROLS,k=>readWalk(k,s))}</div>
     <div class="tsec"><span class="lbl">Smoothing</span>
       ${rows("walk",SMOOTH_CONTROLS,k=>readWalk(k,s))}</div>
@@ -1157,8 +1165,12 @@ const MODE_HINT={off:"Off. Only the old check runs: it pauses the duck once it h
   observe:"Observe. Falls are detected and recorded, nothing about the motion changes. Use this to check the thresholds first.",
   active:"Active. A detected fall stops the walk and softens the joints. Stand the duck up and press A to continue."};
 function setTxt(id,t,cls){ const e=$(id); if(!e) return; e.textContent=t; if(cls!=null) e.className=cls; }
+const REST_HINT={own:"The policy keeps balancing in its own pose while you are not driving.",
+  straight:"After about 1.5 s without stick input the duck eases into the plain, even stance. Touch a stick or nudge the duck and the policy is back within a quarter of a second."};
 function updateTuneLive(s){
   if(!tuneOpen) return;
+  const rest=s.rest||{};
+  if($("restHint")) setTxt("restHint",REST_HINT[rest.enabled?"straight":"own"]+(rest.resting?" Resting now.":""),"thint");
   // a policy swap changes the stride values: rebuild the Walk pane once to show them
   const act=(s.policy||{}).active;
   if(liveActive!==null && act!==liveActive && curTab[curMode||"walk"]==="walk"){ liveActive=act; renderTune(curMode||"walk"); return; }

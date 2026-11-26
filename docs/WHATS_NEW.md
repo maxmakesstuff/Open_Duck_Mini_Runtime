@@ -23,8 +23,8 @@ newcomer can bring a duck up, tune it, and enjoy it without living in the termin
 
 ## Next release (unreleased)
 
-**Stability suite** (not yet run on a real duck; see [STABILITY_SUITE.md](STABILITY_SUITE.md)
-for the first-test plan):
+**Stability suite** (first hardware test done on one duck; results and the test plan
+are in [STABILITY_SUITE.md](STABILITY_SUITE.md)):
 
 - **Pick the walk policy on the phone**, without a restart. The duck remembers the choice.
   Ships the stock walk plus the dk5426 walker.
@@ -36,6 +36,14 @@ for the first-test plan):
   can be downloaded from the phone. `scripts/analyze_falls.py` turns them into numbers.
 - **Health tab:** late control steps, failed servo reads, per-servo supply voltage.
   `scripts/voltage_sag_test.py` measures the supply while the legs work.
+- **Rest pose:** choose whether the duck stands in the policy's own (often crooked) pose
+  or in a straight stance while you are not driving (TUNE → Policy).
+- **Steering trim:** cancels a walk that curves by itself, per policy (TUNE → Walk).
+- **Fixed: corrupted IMU samples** no longer reach the policy. They occurred every few
+  seconds and made the legs kick.
+- **Fixed: the stability governor** no longer throttles the stick during normal walking.
+  It was cutting drive commands most of the time. **The duck responds to the full stick
+  now and feels faster; re-check your walk tuning.**
 - **Settings as tabs** (Policy, Walk, Safety, Health, Ears). The IMU trim moved from the
   main screen into Walk → Calibration, so the main screen fits small phones.
 - The Mac deploy script verifies every copied file by checksum.
