@@ -1203,7 +1203,8 @@ function updateTuneLive(s){
     setTxt("lhWorst",(lh.worst_ms||0).toFixed(0)+" ms", lh.worst_ms>60?"bad":lh.worst_ms>30?"warn":"");
     setTxt("lhFail",String(lh.read_failures||0), lh.read_failures>0?"warn":"");
     const run=lh.imu_longest_repeat||0;
-    setTxt("lhImu",(lh.imu_repeat_pct||0).toFixed(0)+" %, longest "+run+" in a row", run>5?"bad":run>2?"warn":"");
+    const bad=lh.imu_glitches||0;
+    setTxt("lhImu",(lh.imu_repeat_pct||0).toFixed(0)+" %, longest "+run+" in a row"+(bad?", "+bad+" bad dropped":""), run>5?"bad":run>2?"warn":"");
   }
   const vl=$("voltList"), sv=s.servo_voltages;
   if(vl && sv && Object.keys(sv).length){

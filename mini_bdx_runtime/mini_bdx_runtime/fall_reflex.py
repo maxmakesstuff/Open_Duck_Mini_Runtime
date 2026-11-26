@@ -61,6 +61,7 @@ LIMITS = {
 G = 9.81
 GYRO_LIMIT = 12.0      # rad/s; a duck this size tips at up to about 8
 GYRO_JUMP = 4.0        # rad/s per tick; free fall about the feet changes it by < 1
+GYRO_MAX_HOLDS = 3     # ticks a jump may be held back before it is believed
 
 
 def _clamp(v, lo, hi):
@@ -91,6 +92,10 @@ def _norm(v):
     return math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
 
 
+def _far(a, b):
+    return max(abs(a[i] - b[i]) for i in range(3)) > GYRO_JUMP
+
+
 class TiltEstimator:
     """Tracks the direction of "up" in the body frame.
 
@@ -110,14 +115,16 @@ class TiltEstimator:
         self.trust_band = float(trust_band)
         self.use_gyro = bool(use_gyro)
         self._gyro_prev = None         # last accepted sample, for the spike filter
-        self._gyro_held = False
+        self._gyro_cand = None        # a sample held back, waiting for confirmation
+        self._gyro_holds = 0
         self.up = None                 # unit vector, body frame
         self.tilt_deg = 0.0
         self.rate_deg_s = 0.0          # d(tilt)/dt, smoothed; + = tipping further
 
     def reset(self):
         self._gyro_prev = None
-        self._gyro_held = False
+        self._gyro_cand = None        # a sample held back, waiting for confirmation
+        self._gyro_holds = 0
         self.up = None
         self.tilt_deg = 0.0
         self.rate_deg_s = 0.0
@@ -141,13 +148,26 @@ class TiltEstimator:
         # normal operation (a median would cost a whole tick of the short lead time).
         w = tuple(_clamp(x, -GYRO_LIMIT, GYRO_LIMIT) for x in w)
         prev = self._gyro_prev
-        if (prev is not None and not self._gyro_held
-                and max(abs(w[i] - prev[i]) for i in range(3)) > GYRO_JUMP):
-            self._gyro_held = True
-            w = prev
+        cand = self._gyro_cand
+        if prev is None or not _far(w, prev):
+            accept = True                       # ordinary sample
+        elif cand is not None and not _far(w, cand):
+            accept = True                       # the jump repeats: it was real
+        elif self._gyro_holds >= GYRO_MAX_HOLDS:
+            accept = True                       # never lock the estimate out
         else:
-            self._gyro_held = False
+            accept = False
+        if accept:
             self._gyro_prev = w
+            self._gyro_cand = None
+            self._gyro_holds = 0
+        else:
+            # Use the last GOOD sample, and remember the odd one only as a candidate:
+            # a second glitch right after (seen on the duck, on another axis) must
+            # not be taken for confirmation, nor ever be replayed.
+            self._gyro_cand = w
+            self._gyro_holds += 1
+            w = prev
 
         if self.up is None:
             if a_mag < 1e-3:

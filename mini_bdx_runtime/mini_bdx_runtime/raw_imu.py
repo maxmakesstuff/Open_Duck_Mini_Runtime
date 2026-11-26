@@ -13,6 +13,10 @@ try:
     from mini_bdx_runtime.imu_trim import apply_trim
 except ImportError:  # allow flat imports off the package (diagnostic scripts)
     from imu_trim import apply_trim
+try:
+    from mini_bdx_runtime.imu_sanity import plausible
+except ImportError:
+    from imu_sanity import plausible
 
 # Calibration offsets live in HOME so they load no matter what cwd the walk is
 # launched from (a relative path silently ran the IMU uncalibrated otherwise). We
@@ -21,7 +25,6 @@ CALIB_FILENAME = "imu_calib_data.pkl"
 CALIB_PATH = os.path.join(os.path.expanduser("~"), CALIB_FILENAME)
 
 
-# TODO filter spikes
 class Imu:
     def __init__(
         self, sampling_freq, user_pitch_bias=0, calibrate=False, upside_down=True,
@@ -122,6 +125,7 @@ class Imu:
             "accelero": [0, 0, 0],
         }
         self.imu_queue = Queue(maxsize=1)
+        self.glitches = 0            # impossible samples dropped (see imu_sanity)
         Thread(target=self.imu_worker, daemon=True).start()
 
     def tare_x(self):
@@ -160,6 +164,15 @@ class Imu:
                 continue
 
             if gyro.any() is None or accelero.any() is None:
+                continue
+
+            # One axis at the sensor's full scale for a single sample is a corrupted
+            # read, not motion. Drop it and read again at once; the loop keeps the
+            # previous sample (20 ms old) until a good one arrives.
+            if not plausible(gyro, accelero):
+                self.glitches += 1
+                if time.time() - s < 0.004:
+                    time.sleep(0.002)   # never spin on a sensor that only returns junk
                 continue
 
             accelero[0] -= self.x_offset

@@ -195,6 +195,30 @@ def test_live_set_validates():
     assert not reflex.set("nope", 1)
 
 
+def test_two_glitches_in_a_row_on_different_axes_do_not_move_the_estimate():
+    """Recorded on the duck 2026-11-26: -35.5 rad/s on x, then -35.5 on y the very
+    next sample. The old filter took the second for confirmation of the first and
+    then replayed it: 27 deg of lean that never happened, and a false alarm."""
+    est = fr.TiltEstimator()
+    reflex = fr.FallReflex({"mode": "active"})
+    seq = {100: (-35.5, 0.4, 0.4), 101: (0.1, -35.53, -2.5)}
+    for i in range(160):
+        w = seq.get(i, (0.0, 0.0, 0.0))
+        est.update(w, (0.0, 0.0, G), DT)
+        assert reflex.update(est.tilt_deg, est.rate_deg_s, 1.0, i * DT) is None, i
+        assert est.tilt_deg < 2.0, (i, est.tilt_deg)
+
+
+def test_a_held_jump_is_believed_after_a_few_ticks():
+    """Wild but persistent readings must not freeze the estimate for good."""
+    est = fr.TiltEstimator()
+    for i in range(50):
+        est.update((0.0, 0.0, 0.0), (0.0, 0.0, G), DT)
+    for i in range(fr.GYRO_MAX_HOLDS + 3):       # alternating axes, never agreeing
+        est.update((9.0, 0.0, 0.0) if i % 2 else (0.0, 9.0, 0.0), (0.0, 0.0, 30.0), DT)
+    assert est.tilt_deg > 3.0, est.tilt_deg
+
+
 def test_a_single_gyro_spike_is_ignored_but_a_real_fast_tip_is_not():
     for spike in (25.0, -60.0, 400.0):
         est, reflex = fr.TiltEstimator(), fr.FallReflex({"mode": "active"})

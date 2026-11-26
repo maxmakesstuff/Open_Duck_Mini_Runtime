@@ -939,7 +939,8 @@ class RLWalk:
                 "config": {k: gc[k] for k in getup_mod.LIMITS},
             },
             "blackbox": self.blackbox.public(),
-            "loop": self.loop_health.public(),
+            "loop": dict(self.loop_health.public(),
+                         imu_glitches=int(getattr(self.imu, "glitches", 0) or 0)),
             "command_slew": self.shaper.public(),
             "servo_voltages": dict(getattr(self.hwi, "servo_voltages", {}) or {}),
         }
