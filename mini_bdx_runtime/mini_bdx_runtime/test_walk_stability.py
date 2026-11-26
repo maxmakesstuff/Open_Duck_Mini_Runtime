@@ -871,6 +871,37 @@ def test_command_ramp_is_off_by_default_and_ramps_when_enabled():
     run_duck(scenario)
 
 
+GOVERNOR_ON = {"stability_governor": {"enabled": True, "tilt_lo_deg": 10.0,
+                                      "tilt_hi_deg": 25.0, "rate_lo": 2.5,
+                                      "rate_hi": 7.0, "floor": 0.35, "smooth": 0.3}}
+
+
+def test_governor_ignores_foot_impacts_but_still_slows_a_real_lean():
+    """Foot strikes shake the accelerometer by several m/s^2 without the body
+    leaning. The governor must pass the stick through then (it used to cut it most
+    of the time), and still ease off when the duck really tips."""
+    def scenario(duck, post, state):
+        rng = np.random.default_rng(3)
+        lean = {"deg": 0.0}
+
+        def shaken():
+            th = math.radians(lean["deg"])
+            jolt = rng.normal(0.0, 3.0, 3)       # like the recorded walking data
+            return {"gyro": np.zeros(3),
+                    "accelero": np.array([-G * math.sin(th), 0.0, G * math.cos(th)]) + jolt}
+        duck.imu.get_data = shaken
+        duck.xbox_controller.get_last_command = _stick_forward(duck)
+        yield from ticks(150)
+        seen = [o[6] for o in duck.policy.obs[-100:]]
+        assert min(seen) > 0.15 * 0.97, f"stick was cut during plain walking: {min(seen):.3f}"
+        assert state()["governor"]["scale"] > 0.97
+        lean["deg"] = 22.0                       # now it really leans
+        yield from ticks(150)
+        assert duck.policy.obs[-1][6] < 0.15 * 0.7, duck.policy.obs[-1][6]
+        assert state()["governor"]["scale"] < 0.7
+    run_duck(scenario, config=GOVERNOR_ON)
+
+
 def test_default_config_changes_nothing_about_the_walk():
     """No new config keys: every tick's servo write equals init + action * scale,
     exactly as before the suite."""

@@ -1062,8 +1062,16 @@ class RLWalk:
         on self for telemetry."""
         scale = 1.0
         if self.governor.enabled and self._last_imu is not None:
-            pr = _accel_pitch_roll(self._last_imu.get("accelero"))
-            tilt_deg = tilt_angle_deg(pr["pitch"], pr["roll"]) if pr else 0.0
+            # Lean comes from the gyro-fused estimate (the one the soft landing
+            # uses), not from the bare accelerometer: while walking that mostly
+            # shows foot impacts. Measured on a duck, the bare value read more than
+            # 10 deg on 71 % of steps when the real lean did so on 1 %, so the
+            # governor cut and jittered the stick commands almost all the time.
+            if getattr(self.tilt, "up", None) is not None:
+                tilt_deg = float(self.tilt.tilt_deg)
+            else:
+                pr = _accel_pitch_roll(self._last_imu.get("accelero"))
+                tilt_deg = tilt_angle_deg(pr["pitch"], pr["roll"]) if pr else 0.0
             gyro = self._last_imu.get("gyro")
             rate = tilt_rate(gyro) if gyro is not None else 0.0
             scale = self.governor.update(tilt_deg, rate)
