@@ -90,6 +90,14 @@ recordings:
   - A pad that links and drops at once with `hog-lib ... unlikely error` in the
     bluetooth journal has a stale bond (paired with something else since): forget it
     and pair again.
+  - A one-shot `bluetoothctl pair <mac>` has no pairing agent when the service runs it
+    (journal: `No agent available for request type 2`), so pairing fails although the
+    pad is found. `_pair_session` pairs inside one interactive `bluetoothctl` session
+    that registers its own `NoInputNoOutput` agent. Confirmed from the tab on the MAX
+    duck on 2026-11-27 (forget, pair, reconnect).
+  - BlueZ needs a few seconds until a removed or newly paired pad shows in its state.
+    Judging at once reported "could not forget" for a forget that had worked;
+    `_settled` waits for it.
 
 ### New 2026-11-24, branch `feature/stability-suite`
 
