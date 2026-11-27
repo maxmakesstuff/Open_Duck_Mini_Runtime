@@ -106,6 +106,24 @@ recordings:
     dead until a restart. In walk mode a dead reader leaves the duck on its last
     stick command. `xbox_controller.py` now catches everything, drops the pad,
     re-probes, and sends one neutral command (`test_xbox_reader_faults.py`).
+  - **Get-up, first real attempts (MAX duck, 2026-11-27, hardwood):** not standing up
+    yet. Simulated on the Mac (dk5426's training model in MuJoCo, our
+    `GetUpController`): stands 12/12, and the 92 inputs rebuilt from the duck's
+    recordings reproduce the recorded actions, so the robot-side pipeline matches the
+    contract. Head gain 8, head mass +60%, floor friction 0.3 to 1.5, blend and soft
+    start, and uniformly weak servos all still stand in sim. What does reproduce the
+    failure is ONE blocked hip pitch: in both unaided recordings the left hip pitch
+    (id 22) stands still at -0.49 rad for 0.3 s (0.24 to 0.56 s) while its target runs
+    on to +0.3, the right one follows. The duck then reaches about 20 deg off upright,
+    falls back and loops in a lopsided pose, skidding on its head. Cause of the block
+    not yet found (cable from the rewiring, thigh against something, or torque).
+    A get-up now reports blocked joints (`GetUpController.blocked()`).
+  - `SIM_STANDING_ACC` was wrong: (-1.22, -1.95, 9.54) from dk5426's
+    `imu_offset_eval.py` is not their get-up model at rest. Measured: (0.03, 0, 9.81),
+    fed to the policy unchanged. The old value rotated a level IMU by 15 deg and kept
+    the standing test from latching (helped attempt: 0.23 s upright with it, 0.58 s
+    without; 0.4 s needed). Now (0, 0, 9.81). Sim sandbox, if still there:
+    `<scratchpad>/getup_sim/`.
   - The launcher runs Python with buffered output, so a mode's prints and tracebacks
     reach the journal late or only at exit. Read them with
     `journalctl -b _PID=<python pid>`.

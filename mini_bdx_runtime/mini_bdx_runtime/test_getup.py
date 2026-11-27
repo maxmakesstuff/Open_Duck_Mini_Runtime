@@ -162,10 +162,34 @@ def test_imu_correction_maps_this_ducks_standing_reading_onto_the_models():
     R, scale = gu.imu_correction(standing)
     out = (R @ np.array(standing)) * scale
     assert np.allclose(out, gu.SIM_STANDING_ACC, atol=1e-6)
-    assert 1.06 < scale < 1.10                  # their reading is "8% low"
-    angle = np.degrees(np.arccos((np.trace(R) - 1) / 2))
-    assert abs(angle - 17.5) < 0.6              # their "17.5 deg apart"
     assert np.allclose(R @ R.T, np.eye(3), atol=1e-9) and abs(np.linalg.det(R) - 1) < 1e-9
+
+
+def test_the_model_stands_level_and_a_level_duck_is_left_alone():
+    """The training model reads (0, 0, 9.81) standing (measured in MuJoCo). A duck
+    whose IMU is mounted level must not be rotated: the old reference turned the
+    MAX duck's readings by 15 degrees, which kept "standing" from latching."""
+    assert gu.SIM_STANDING_ACC == (0.0, 0.0, 9.81)
+    R, scale = gu.imu_correction([0.251, 0.127, 10.213])      # the MAX duck
+    angle = np.degrees(np.arccos(min(1.0, (np.trace(R) - 1) / 2)))
+    assert angle < 2.0 and 0.95 < scale < 0.97
+    up = (R @ np.array([0.251, 0.127, 10.213]))
+    assert up[2] / np.linalg.norm(up) > 0.9999
+
+
+def test_a_blocked_joint_is_named():
+    ctl = _ctl()
+    ctl.start(HOME, 0.0)
+    assert ctl.blocked() == []
+    stuck = HOME.copy()
+    stuck[2] -= 0.6                              # left hip pitch held away from target
+    ctl.targets = HOME.copy()
+    for _ in range(10):                          # 0.2 s at 50 Hz, not moving
+        ctl._note_stalls(stuck, np.zeros(14))
+    assert [i for i, _ in ctl.blocked()] == [2] and ctl.blocked()[0][1] >= 0.19
+    ctl._note_stalls(stuck, np.full(14, 2.0))    # moving again: stretch ends, max stays
+    assert ctl._stall_s[2] == 0.0 and ctl.blocked()[0][0] == 2
+    assert ctl.public()["blocked"] == ctl.blocked()
 
 
 def test_imu_correction_is_identity_without_or_with_a_bad_reference():
@@ -181,7 +205,7 @@ def test_corrected_standing_reading_counts_as_upright():
     ctl.start(HOME, 0.0)
     _steps(ctl, 60, HOME, acc=np.array(standing))
     assert ctl.phase in ("handoff", "done")
-    assert abs(ctl.upright - 9.54 / np.linalg.norm(gu.SIM_STANDING_ACC)) < 0.02
+    assert ctl.upright > 0.99
 
 
 def test_config_is_clamped_and_junk_ignored():

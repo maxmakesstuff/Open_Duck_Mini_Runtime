@@ -790,7 +790,19 @@ class RLWalk:
         self.paused = True
         self._go_soft()                 # do not stall the servos against the floor
         self._end_getup_take()
-        self._notify(f"Get-up stopped: {why}.", 15.0)
+        blocked = self._getup_blocked_text()
+        print(f"[getup] stopped: {why}{blocked}", flush=True)
+        self._notify(f"Get-up stopped: {why}.{blocked}", 15.0)
+
+    def _getup_blocked_text(self):
+        """' Blocked: left_hip_pitch 0.3 s' for the joints that stood still far from
+        their target during the attempt, or ''."""
+        if self.getup is None:
+            return ""
+        names = list(self.hwi.joints.keys())
+        parts = [f"{names[i]} {s:g} s" for i, s in self.getup.blocked()[:3]
+                 if i < len(names)]
+        return (" Blocked: " + ", ".join(parts) + ".") if parts else ""
 
     def _getup_tick(self, now):
         ctl = self.getup

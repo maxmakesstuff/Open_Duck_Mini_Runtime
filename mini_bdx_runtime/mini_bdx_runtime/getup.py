@@ -33,10 +33,20 @@ JOINT_HI = np.array([0.52, 0.44, 0.52, 1.57, 1.57, 1.13, 0.79, 2.79, 0.52,
 LEG_IDX = np.r_[0:5, 9:14]
 OBS_SIZE = 92
 
-# Accelerometer reading of the TRAINING model standing at the home pose (m/s^2), as
-# measured by dk5426. A real duck's IMU sits at a different angle; with a standing
-# reference captured on the duck, the get-up's IMU input is rotated to match.
-SIM_STANDING_ACC = (-1.22, -1.95, 9.54)
+# Accelerometer reading of the TRAINING model standing at the home pose (m/s^2):
+# level. Measured in MuJoCo on dk5426's get-up model on 2026-11-27: (0.03, 0.00,
+# 9.81), and the get-up env feeds that sensor to the policy unchanged. With a
+# standing reference captured on the duck, the get-up's IMU input is rotated so that
+# this duck standing also reads level.
+# (Until 2026-11-27 this was (-1.22, -1.95, 9.54), taken from dk5426's
+# imu_offset_eval.py. That is not this model at rest; it tilted every reading of a
+# level-mounted IMU by 15 degrees and kept the "standing" test from latching.)
+SIM_STANDING_ACC = (0.0, 0.0, 9.81)
+
+# A joint counts as blocked when it is this far from its target and not moving.
+STALL_ERR = 0.25      # rad
+STALL_VEL = 0.3       # rad/s
+STALL_MIN_S = 0.1
 
 DEFAULTS = {
     "enabled": False,          # show/allow the get-up at all
@@ -161,6 +171,8 @@ class GetUpController:
         self.handoff_t = None
         self.elapsed = 0.0
         self.upright = 0.0
+        self._stall_s = np.zeros(n)        # current blocked stretch per joint
+        self.stall_max = np.zeros(n)       # longest blocked stretch per joint
 
     # ---------------------------------------------------------------- IMU ----
     def correct_imu(self, gyro, acc):
@@ -234,6 +246,7 @@ class GetUpController:
             return self.targets
 
         self.elapsed = now - self.t0
+        self._note_stalls(pos, vel)
         gyro_c, acc_c = self.correct_imu(gyro, acc)
         obs = self.build_obs(pos, vel, gyro_c, acc_c, contacts)
         self.last_obs = obs
@@ -257,7 +270,22 @@ class GetUpController:
             self.result = f"not standing after {c['timeout_s']:g} s"
         return self.targets
 
+    def _note_stalls(self, pos, vel):
+        """Track joints that are far from the target they were sent and not moving:
+        a servo at its torque limit, or something in the way. One blocked hip was
+        what kept the first real get-ups from working, and it took a simulation to
+        see it in the recording."""
+        blocked = (np.abs(self.targets - pos) > STALL_ERR) & (np.abs(vel) < STALL_VEL)
+        self._stall_s = np.where(blocked, self._stall_s + self.dt, 0.0)
+        self.stall_max = np.maximum(self.stall_max, self._stall_s)
+
+    def blocked(self):
+        """[(joint index, longest blocked seconds)], longest first."""
+        idx = [i for i in np.argsort(-self.stall_max) if self.stall_max[i] >= STALL_MIN_S]
+        return [(int(i), round(float(self.stall_max[i]), 2)) for i in idx]
+
     def public(self):
         return {"phase": self.phase, "result": self.result,
                 "elapsed_s": round(float(self.elapsed), 1),
-                "upright": round(float(self.upright), 2)}
+                "upright": round(float(self.upright), 2),
+                "blocked": self.blocked()}
