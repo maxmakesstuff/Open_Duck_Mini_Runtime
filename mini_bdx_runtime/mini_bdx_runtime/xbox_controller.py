@@ -72,6 +72,24 @@ def merge_axes(pad_axes, pad_trig, web_active, web_axes, web_trig):
     return l_x, l_y, r_x, r_y, lt, rt
 
 
+# A stick at rest is rarely exactly centred, and an Xbox pad takes whatever position
+# the sticks are in when it connects as its centre. Without a dead zone that offset is
+# a permanent small drive command: the duck creeps or turns, and the rest pose never
+# engages because the duck is "being driven" (seen 2026-11-27: yaw stuck at 0.017).
+STICK_DEADZONE = 0.10
+
+
+def apply_deadzone(value, deadzone=STICK_DEADZONE):
+    """0 inside the dead zone, rescaled outside so full deflection is still +-1."""
+    v = float(value)
+    if not v == v:                       # NaN
+        return 0.0
+    v = max(-1.0, min(1.0, v))
+    if abs(v) <= deadzone:
+        return 0.0
+    return (abs(v) - deadzone) / (1.0 - deadzone) * (1.0 if v > 0 else -1.0)
+
+
 def neutral_command():
     """What get_commands() returns with everything released: no motion, no buttons."""
     return (np.zeros(7), False, False, False, False, False, False, 0.0, 0.0,
@@ -206,10 +224,10 @@ class XBoxController:
             return neutral
 
         try:
-            l_x = -1 * self.p1.get_axis(0)
-            l_y = -1 * self.p1.get_axis(1)
-            r_x = -1 * self.p1.get_axis(2)
-            r_y = -1 * self.p1.get_axis(3)
+            l_x = apply_deadzone(-1 * self.p1.get_axis(0))
+            l_y = apply_deadzone(-1 * self.p1.get_axis(1))
+            r_x = apply_deadzone(-1 * self.p1.get_axis(2))
+            r_y = apply_deadzone(-1 * self.p1.get_axis(3))
             right_trigger = float(np.around((self.p1.get_axis(4) + 1) / 2, 3))
             left_trigger = float(np.around((self.p1.get_axis(5) + 1) / 2, 3))
             if left_trigger < 0.1:

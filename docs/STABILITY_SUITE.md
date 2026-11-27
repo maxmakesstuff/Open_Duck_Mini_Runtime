@@ -107,16 +107,23 @@ python scripts/analyze_falls.py ~/Downloads/*take*.npz
 ```
   "PER POLICY" lists wobble and lean for each. Lower is steadier.
 
-### 8. Get-up (15 min, soft surface, only if step 2 passed)
+### 8. Get-up (15 min, hard smooth floor, only if step 2 passed)
+- **Experimental.** Read [Get-up test results](#get-up-test-results-2026-11-27) first.
+- Nothing may hold a joint back: no decoration, cable tie or tight cable on the neck
+  or the legs. Check that head and legs move freely through their whole range.
+- Charged battery. The push pulls about 7 A and drops the supply by about 2 V.
 - TUNE → Safety → Get up → **Get-up available: ON**.
 - Once per duck: put it on the floor, tap **HOLD STANCE**, wait until it stands still,
   tap **CAPTURE**. "Standing reference: captured" must appear.
-- Pause, lay the duck face-down. Tap **GET UP** on the main screen (gamepad: RB + B).
-  It only starts while the duck is lying down.
+- Pause, lay the duck face-down, head straight. Tap **GET UP** on the main screen
+  (gamepad: RB + B). The button is there while the duck is paused or has fallen. It
+  only starts while the duck is lying down.
   **A stops it at any time** and the joints go soft.
 - **Pass:** it stands up, the banner shows BALANCING for 3 s, then you have control.
-- If it does not stand within 10 s it stops by itself and goes soft. Download the
-  `getup` recording either way; it shows how far it got.
+- If it does not stand within 10 s it stops by itself and goes soft. The message
+  names any joint that stood still far from its target ("Blocked: left_hip_pitch
+  1.3 s"): look there first. Download the `getup` recording either way; it shows how
+  far it got.
 - Leave "Start by itself after a fall" off until the manual get-up works several times
   in a row.
 
@@ -177,8 +184,53 @@ recorded falls. Numbers come from the black-box recordings, read with
   No failed servo read in the whole session.
 - IMU pitch trim: +0.6° and −3.5° gave the same posture and lean with the stock walk.
 
-**Still open:** the get-up (step 8), the supply test under load (step 2), the rest pose
-and the steering trim on hardware, and all of it on the second duck.
+**Still open after 2026-11-27:** a get-up that works repeatedly (see below), and all of
+it on the second duck. The supply test (step 2), the rest pose and the steering trim
+are done on the first duck.
+
+## Get-up test results (2026-11-27)
+
+One duck, hardwood floor, about ten attempts. **Not reliable yet; ships off.**
+
+**Supply first.** The left leg was wired behind the last head servo and sagged 1.1 to
+1.9 V under a light load (5.5 V at the ankle). Rewired with a Y-cable at the board, one
+branch per leg: every servo now sags 0.2 to 0.5 V, lowest 7.5 V. Wire your legs this way.
+
+**What we measured**
+- In simulation (the policy's own training model, driven by this runtime's get-up code)
+  the duck stands up 12 times out of 12, upright after about 0.8 s. The inputs rebuilt
+  from the duck's recordings reproduce the recorded actions, so the duck feeds the
+  policy correctly.
+- Still standing up in simulation: head gain as on the robot, a head up to 60 %
+  heavier, floor friction from 0.3 to 1.5, uniformly weaker servos (down to 45 %
+  torque), with and without the blend and the soft start. None of these is the cause.
+- What does reproduce the failure in simulation: **one** hip pitch that cannot move.
+- On the duck, the left hip pitch stood still for 0.3 to 1.3 s in the first swing while
+  the right one followed, and neck and head took about 1.5 s to get under the body.
+  **Cause: a decoration ("tie") on the neck that held the neck pitch servo back.**
+  Without it, neck and head are in place after about 0.7 s and the hip no longer stalls.
+- Ruled out along the way: servo settings (identical on all 14), the servos' overload
+  protection tripping while the duck lies stiff on the floor (8 s, highest load 16 %),
+  and a weak left hip servo (left and right follow equally over 450 s of walking).
+- A replay of a get-up start with the servos' own telemetry: supply 7.5 V down to
+  5.6 V at 6.8 A peak, no protection flag, left hip pitch briefly at 100 % load and 3.4 A.
+
+**Two faults in the runtime, fixed**
+- The reference for "what the accelerometer reads standing" was wrong. It came from the
+  policy author's tool and is not the model at rest (measured: level). It tilted a
+  level-mounted IMU by 15°.
+- "Standing" was judged from the bare accelerometer. A duck that has just landed on its
+  feet rocks, and single samples read far off. In one attempt the duck stood for 0.85 s
+  (lean under 20°, both feet down) without counting as standing, and the get-up policy
+  tipped it over backwards. The test now uses the fused lean (gyro and accelerometer).
+
+**Where it stands.** After both fixes and without the tie, one recorded attempt went
+from lying to standing in 3.0 s and then balanced for 3 s with both feet down. It is a
+single recording, and whether a hand helped is not known. Testing stopped there: the
+duck's neck was damaged and needs a repair first.
+
+**Next, when the neck is repaired:** five unaided attempts on a charged battery, filmed
+from the side, and the `getup` recording of each.
 
 ## Reviewed
 
@@ -190,7 +242,10 @@ config save and stricter input checks came out of the same review.
 
 ## Known limits
 
-- The get-up only works from face-down.
+- The get-up only works from face-down, is not reliable yet, and is hard on the neck:
+  the policy pushes the head into the floor to lever the body up.
+- Anything that restricts a joint (decoration, cable tie, tight cable) makes the
+  get-up fail; one held-back neck servo was enough.
 - The soft landing lowers the stiffness of all servos in one bus write. A servo from a
   newer firmware batch can disturb such grouped writes (seen once on a replaced knee
   servo); step 6 shows at once whether the write gets through. After that servo was

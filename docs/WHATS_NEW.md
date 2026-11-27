@@ -31,7 +31,14 @@ are in [STABILITY_SUITE.md](STABILITY_SUITE.md)):
 - **Soft landing:** the duck notices a fall on the way down, stops kicking and lets its
   joints go soft before the impact. Starts in Observe, where it only watches and records.
 - **Get-up** from face-down with dk5426's policy, then the walk policy balances. Off by
-  default.
+  default and **experimental**: it stands up every time in simulation, but only once in
+  about ten attempts on our duck so far. Needs evenly wired legs, a charged battery and
+  joints that nothing holds back. GET UP is offered while the duck is paused or has
+  fallen, and a failed attempt names the joint that got stuck.
+- **Stick dead zone:** a stick resting slightly off-centre no longer counts as driving.
+  Before, it made the duck creep or turn and kept the straight rest pose from engaging.
+- **Fixed: the gamepad could go dead** when it connected just as a mode started. The
+  reader now survives that and re-attaches the pad within about 2 seconds.
 - **Black box:** the last 20 seconds of sensor and motor data are saved at every fall, and
   can be downloaded from the phone. `scripts/analyze_falls.py` turns them into numbers.
 - **Health tab:** late control steps, failed servo reads, per-servo supply voltage.

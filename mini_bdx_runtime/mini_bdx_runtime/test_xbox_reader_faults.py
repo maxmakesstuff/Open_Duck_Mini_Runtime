@@ -165,6 +165,20 @@ def test_worker_survives_a_failing_get_commands():
     assert not np.any(c.get_last_command()[0])         # ...is replaced by neutral
 
 
+def test_dead_zone_swallows_a_resting_offset_and_keeps_full_range():
+    assert xc.apply_deadzone(0.0) == 0.0
+    assert xc.apply_deadzone(0.06) == 0.0 and xc.apply_deadzone(-0.099) == 0.0
+    assert abs(xc.apply_deadzone(1.0) - 1.0) < 1e-9 and abs(xc.apply_deadzone(-1.0) + 1.0) < 1e-9
+    assert 0.0 < xc.apply_deadzone(0.12) < 0.05                 # continuous at the edge
+    assert xc.apply_deadzone(float("nan")) == 0.0 and xc.apply_deadzone(3.0) == 1.0
+    c = make()
+    W.axes[0], W.axes[1], W.axes[2] = -0.03, 0.04, -0.017      # sticks resting off-centre
+    cmd = c.get_commands()[0]
+    assert not np.any(cmd[:3]), cmd                              # exactly idle: rest pose can engage
+    W.axes[1] = -1.0
+    assert abs(c.get_commands()[0][0] - 0.15) < 1e-6             # full stick is still full speed
+
+
 if __name__ == "__main__":
     n = 0
     for name, fn in sorted(globals().items()):

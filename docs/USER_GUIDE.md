@@ -229,7 +229,9 @@ saved until you press **Save**:
     remembers the choice. Below it, **When the sticks are idle**: keep the policy's own
     standing pose (some stand crooked or look up) or choose **Straight stance**, where
     the duck eases into an even stance after about 1.5 s and the policy returns the
-    moment you touch a stick or nudge the duck.
+    moment you touch a stick or nudge the duck. If it never eases into the stance, a
+    stick is resting far off-centre: switch the pad off and on again **without
+    touching the sticks** (the pad takes their position at power-on as the centre).
   - **Walk** — action scale, gait offset and **steering trim** (all kept per policy),
     joint speed limit, stick ramp, the stability governor, and the **IMU trim** card.
     Steering trim: if the duck curves with only the forward stick, move it until it

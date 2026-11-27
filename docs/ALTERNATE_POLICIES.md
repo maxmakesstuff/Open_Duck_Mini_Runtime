@@ -33,7 +33,7 @@ https://github.com/dk5426/open-duck-curation · Apache-2.0 · active (last push 
 | File (`policies/`) | In → out | What it does | Evidence |
 |---|---|---|---|
 | `ours_walker_full300M_258M.onnx` | 101 → 14 | Walk. 26% better command tracking than stock in their sim test. Ignores very small forward commands from standstill. | Ran on their real duck. Gene Turnbow (Discord): higher foot lift, six steps before a fall, on a duck that did not walk before. |
-| `getup_real2_80M.onnx` | 92 → 14 | Get-up from face-down. | Repo logs (to 2026-11-02): 0 of 14 held standing; 9 of 14 upright briefly. atlantis235 (Discord, 2026-11-23): works after runtime and wiring fixes, video posted. |
+| `getup_real2_80M.onnx` | 92 → 14 | Get-up from face-down. | Repo logs (to 2026-11-02): 0 of 14 held standing; 9 of 14 upright briefly. atlantis235 (Discord, 2026-11-23): works after runtime and wiring fixes, video posted. Ours (2026-11-27): 12 of 12 in simulation with this runtime; on the duck one recorded stand-up in about ten attempts, see STABILITY_SUITE.md. |
 | `getup_real_41M.onnx` | 92 → 14 | Earlier get-up. | Repo logs: 2 of 8. |
 | `getup_real_29M`, `getup_back2_101M`, `getup_173M` | 92 → 14 | Earlier get-ups, incl. from the back. | Repo logs: 0 of 12 and 0 of 3 for the last two. |
 | `jump_101M.onnx` | 94 → 14 | Jump. | Does not leave the ground. |

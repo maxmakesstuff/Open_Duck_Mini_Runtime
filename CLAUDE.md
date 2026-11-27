@@ -129,6 +129,24 @@ recordings:
     (`step(..., tilt_deg=)`); replayed on that recording it latches at 4.12 s.
     Instrumented replay of a get-up start: bus sags 7.5 V -> 5.6 V at 6.8 A peak, no
     protection flags; left hip pitch briefly at 100 % load / 3.4 A.
+  - **Get-up state when testing stopped (2026-11-27 night):** after the tie came off
+    and the fused-tilt latch went in, recording `214327_getup` goes from lying to
+    standing in 3.0 s and balances 3 s, feet down (single recording; unknown whether a
+    hand helped). Then the duck's neck got damaged; the user repairs it and comes back
+    to the get-up later. Get-up stays in the build, off by default, marked
+    experimental. Full write-up: `docs/STABILITY_SUITE.md`, "Get-up test results".
+    Next: five unaided, filmed attempts on a charged battery.
+  - **"Rest pose stopped working" was stick drift, not the get-up.** From about 21:40
+    the idle commands were a constant (0.005, 0, 0.017) instead of exactly 0, so the
+    duck counted as driven and `RestPose` never engaged. An Xbox pad takes the stick
+    position at connect as its centre, and the pad was reconnected many times that
+    evening. `xbox_controller.apply_deadzone` (10 %, rescaled) now zeroes that.
+    To check for drift: the `commands` column of any recording at standstill.
+  - Raw servo telemetry (voltage, current, load, protection flag; rustypot cannot read
+    them) can be read with a plain Feetech read over pyserial while no mode owns the
+    bus. Scratch tools from this session: `reg_dump.py`, `prot_test.py`,
+    `replay_probe.py` (were in the session scratchpad, not in the repo). `turn_off.py`
+    is what makes the duck limp; stopping a mode leaves the servos powered and soft.
   - `SIM_STANDING_ACC` was wrong: (-1.22, -1.95, 9.54) from dk5426's
     `imu_offset_eval.py` is not their get-up model at rest. Measured: (0.03, 0, 9.81),
     fed to the policy unchanged. The old value rotated a level IMU by 15 deg and kept
