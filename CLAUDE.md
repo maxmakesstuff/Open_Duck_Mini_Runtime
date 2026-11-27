@@ -136,17 +136,24 @@ recordings:
     to the get-up later. Get-up stays in the build, off by default, marked
     experimental. Full write-up: `docs/STABILITY_SUITE.md`, "Get-up test results".
     Next: five unaided, filmed attempts on a charged battery.
-  - **Head life (new 2026-11-27, untested on hardware when written):**
-    `head_life.py` adds look-around and a step-locked neck bob as offsets on
-    `last_commands[3:7]` BEFORE the observation is built
-    (`RLWalk._apply_head_life`), so the policy sees the head command; the existing
-    overlay then sends it to the head servos. Trained head ranges (Open_Duck_Playground
-    `joystick.py`): neck -0.34..1.1, pitch +-0.78, yaw +-1.5, roll +-0.5, drawn at
-    random, never in rhythm with the gait, which is why the bob is the experiment.
-    Gait cycle 0.54 s, so the bob runs at about 3.7 Hz on head servos at kp 8. Config
-    key `head_life`, settings group `head`, telemetry `head_life`. Never edit
+  - **Head life (2026-11-27):** `head_life.py` adds a slow random look-around as
+    offsets on `last_commands[4:7]` (head pitch, yaw, roll) BEFORE the observation is
+    built (`RLWalk._apply_head_life`), so the policy sees the head command; the
+    existing overlay then sends it to the head servos. Confirmed on the MAX duck: "pretty
+    nice", walk unaffected. Trained head ranges (Open_Duck_Playground `joystick.py`):
+    neck -0.34..1.1, pitch +-0.78, yaw +-1.5, roll +-0.5, drawn at random. Config key
+    `head_life`, settings group `head`, telemetry `head_life`. Never edit
     `last_commands` in place: the pad hands the same array back on ticks without a
     fresh sample.
+  - **Head bob in step with the gait: tried, failed, removed.** Neck pitch nodding twice
+    per gait cycle (0.54 s cycle, so about 3.7 Hz) off the gait clock. On the duck it
+    visibly upset the walk; the one recorded walk at 10 deg fell after 8 s. The policy
+    was trained with random head commands, never rhythmic ones. Needs a policy trained
+    for it; do not retry on this one.
+  - With "Straight stance" resting, the policy is faded out, so the neck sits at the
+    stance angle 0, further back than the roughly 0.15 to 0.2 rad forward the walk
+    policy holds it at. That reads as "neck locked back" while the duck stands and
+    looks around; it comes forward the moment the policy wakes.
   - **"Rest pose stopped working" was stick drift, not the get-up.** From about 21:40
     the idle commands were a constant (0.005, 0, 0.017) instead of exactly 0, so the
     duck counted as driven and `RestPose` never engaged. An Xbox pad takes the stick

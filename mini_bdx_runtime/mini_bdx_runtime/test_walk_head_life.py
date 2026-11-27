@@ -21,18 +21,6 @@ def head_cmd(duck):
     return np.array(duck.policy.obs[-1][CMD][3:7], dtype=float)
 
 
-def drive(duck, forward=0.1):
-    """Make the fake pad push the stick forward from now on."""
-    plain = duck.xbox_controller.get_last_command
-
-    def pushed():
-        cmds, buttons, lt, rt = plain()
-        cmds = list(cmds)
-        cmds[0] = forward
-        return cmds, buttons, lt, rt
-    duck.xbox_controller.get_last_command = pushed
-
-
 def test_off_by_default_the_head_command_is_untouched():
     def scenario(duck, post, state):
         yield from H.ticks(60)
@@ -77,30 +65,12 @@ def test_puppeteer_taking_the_head_stops_it():
     H.run_duck(scenario, action=0.0)
 
 
-def test_bob_only_while_driving_and_only_on_the_neck():
-    def scenario(duck, post, state):
-        post("/api/setting", {"group": "head", "key": "bob", "value": True})
-        post("/api/setting", {"group": "head", "key": "bob_deg", "value": 4.0})
-        yield from H.ticks(100)
-        assert not np.any(head_cmd(duck))                  # standing: no bob
-        drive(duck)
-        seen = []
-        for _ in range(200):
-            yield
-            seen.append(head_cmd(duck))
-        seen = np.array(seen)
-        assert abs(np.max(seen[100:, 0]) - np.radians(4.0)) < 0.01
-        assert abs(np.min(seen[100:, 0]) + np.radians(4.0)) < 0.01
-        assert not np.any(seen[:, 1:])
-    H.run_duck(scenario, action=0.0)
-
-
 def test_settings_save_to_the_config_and_load_again():
     def scenario(duck, post, state):
         post("/api/setting", {"group": "head", "key": "look", "value": True})
-        post("/api/setting", {"group": "head", "key": "bob_deg", "value": 99})
+        post("/api/setting", {"group": "head", "key": "look_scale", "value": 99})
         yield from H.ticks(3)
-        assert state()["head_life"]["bob_deg"] == 10.0     # clamped
+        assert state()["head_life"]["look_scale"] == 1.5   # clamped
         post("/api/setting", {"group": "head", "action": "save"})
         yield from H.ticks(3)
     H.run_duck(scenario)
@@ -111,7 +81,7 @@ def test_settings_save_to_the_config_and_load_again():
         if "head_life" in saved:
             break
         time.sleep(0.05)
-    assert saved["head_life"]["look"] is True and saved["head_life"]["bob_deg"] == 10.0
+    assert saved["head_life"] == {"look": True, "look_scale": 1.5}
     assert saved["joints_offsets"] == H.OFFSETS and saved["some_other_key"] == "keep me"
 
     def again(duck, post, state):

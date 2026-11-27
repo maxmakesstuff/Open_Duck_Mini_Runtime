@@ -502,17 +502,15 @@ class RLWalk:
         if getattr(self, "head_life", None) is not None:
             self.head_life.reset()      # the head is at the stance: start from there
 
-    def _apply_head_life(self, now, driving):
-        """Add the look-around / head-bob offsets to this tick's head command. They
+    def _apply_head_life(self, now):
+        """Add the look-around offsets to this tick's head command. They
         go in BEFORE the observation is built, so the policy sees the head command it
         was trained to carry. Off, or not allowed, the offsets glide to zero."""
         allowed = (self._activity is None
                    and not getattr(self.xbox_controller, "head_control_mode", False)
                    and self.recorder.state != "playing")
         dt = self._tick_dt if 0.0 < self._tick_dt < 0.2 else 1.0 / self.control_freq
-        phase = self.imitation_i / self.PRM.nb_steps_in_period * 2.0 * np.pi
-        off = self.head_life.update(now, dt, gait_phase=phase, stepping=driving,
-                                    allowed=allowed)
+        off = self.head_life.update(now, dt, allowed=allowed)
         if not any(abs(v) > 1e-6 for v in off):
             return
         cmds = np.array(self.last_commands, dtype=float)    # never edit in place
@@ -1752,7 +1750,7 @@ class RLWalk:
                     self._end_tick(t)
                     continue
 
-                self._apply_head_life(t, driving)
+                self._apply_head_life(t)
 
                 obs = self.get_obs(self._last_imu)
                 if obs is None:
