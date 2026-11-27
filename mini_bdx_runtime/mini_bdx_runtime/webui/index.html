@@ -1026,8 +1026,26 @@ function paneHealth(s){
       <div class="sub">Read while paused. A servo well below the others points at a weak cable or plug on that leg. For the reading under load, run voltage_sag_test.py.</div>
       <div class="volts" id="voltList"><div class="thint" style="grid-column:1/-1">Pause the duck to read the voltages.</div></div></div>`;
 }
+const HEAD_CONTROLS=[
+  {k:"bob_deg",name:"Bob strength",min:0,max:10,step:0.5,unit:"°",
+   help:"How far the neck nods with each step. Start at 3° and raise it while the walk stays steady."},
+  {k:"bob_phase_deg",name:"Bob timing",min:0,max:360,step:15,unit:"°",
+   help:"Where in the step the head is furthest forward. Try a few values: one will look right and walk calmest, the opposite one tends to feed the sway."},
+  {k:"look_scale",name:"Glance size",min:0.2,max:1.5,step:0.1,
+   help:"1 = glances up to about 25° to either side. Smaller = subtler."},
+];
+function paneHead(s){ const h=s.head_life; if(!h) return "";
+  return `<div class="tsec"><span class="lbl">Head while walking</span>
+    ${toggleRow("head",{k:"look",name:"Look around",
+      help:"The head drifts to a new glance direction every few seconds and comes back. Slow and smooth. Pauses by itself while you steer the head with <b>Y</b>."},!!h.look)}
+    ${toggleRow("head",{k:"bob",name:"Head bob",
+      help:"A small nod of the neck with every step. <b>Experimental:</b> the walk was not trained with a head moving in rhythm, so start small and watch the walk."},!!h.bob)}
+    ${rows("head",HEAD_CONTROLS,k=>h[k]!=null?h[k]:0)}
+    <button class="btn tsave" data-save="head">SAVE HEAD MOTION TO DUCK</button>
+    <button class="btn treset" data-reset="head">↺ RESET HEAD MOTION TO DEFAULTS</button></div>`; }
 function paneEars(s){ const on=!!s.antenna_anim, sync=!!s.antenna_sync;
-  return `<div class="tsec"><span class="lbl">Ear antennas</span>
+  if(((s.features||{}).antennas)===false) return paneHead(s);
+  return paneHead(s)+`<div class="tsec"><span class="lbl">Ear antennas</span>
     ${toggleRow("antenna",{k:"free_anim",name:"Free animation",
       help:"Gentle random idle wiggle when you're not holding the ears. <b>On</b> = the duck feels alive; <b>off</b> = ears rest still for precise hand control (via the triggers). Needs the pigpio jitter fix for steady ears."},on)}
     ${toggleRow("antenna",{k:"sync",name:"Sync ears (unison)",
@@ -1078,13 +1096,13 @@ const TRIM_CARD=`<div class="trim" id="trim">
       <div class="thelp hidden" id="hlp_roll" style="flex-basis:100%">Cancels a left/right lean the IMU reads at rest (radians). Nudge <b>+</b> if it leans/falls to one side, <b>−</b> for the other. Small steps; check by walking. Roll should sit near 0 on a symmetric duck.</div>
     </div>`;
 const PANES={policy:panePolicy,walk:paneWalk,safety:paneSafety,health:paneHealth,ears:paneEars,camera:paneCamera,gamepad:paneGamepad};
-const TAB_NAMES={policy:"Policy",walk:"Walk",safety:"Safety",health:"Health",ears:"Ears",camera:"Camera",gamepad:"Gamepad"};
+const TAB_NAMES={policy:"Policy",walk:"Walk",safety:"Safety",health:"Health",ears:"Animation",camera:"Camera",gamepad:"Gamepad"};
 let curTab={walk:"policy",head_puppet:"camera"};
 try{ const t=JSON.parse(sessionStorage.getItem("duckTab")||"null"); if(t&&t.walk&&t.head_puppet) curTab=t; }catch(_){}
 function tabsFor(mode,s){
   const ears=((s.features||{}).antennas)!==false;
   const t = mode==="head_puppet" ? ["camera"] : ["policy","walk","safety","health"];
-  if(ears) t.push("ears"); t.push("gamepad"); return t;
+  if(ears||s.head_life) t.push("ears"); t.push("gamepad"); return t;
 }
 
 function renderTune(mode){

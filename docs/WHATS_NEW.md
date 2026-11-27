@@ -35,6 +35,11 @@ are in [STABILITY_SUITE.md](STABILITY_SUITE.md)):
   about ten attempts on our duck so far. Needs evenly wired legs, a charged battery and
   joints that nothing holds back. GET UP is offered while the duck is paused or has
   fallen, and a failed attempt names the joint that got stuck.
+- **Head life** (TUNE → Animation, walk mode): **Look around** lets the head drift to a
+  new glance direction every few seconds while the duck walks or stands. **Head bob**
+  nods the neck a few degrees with every step (experimental, strength and timing are
+  sliders). Both pause by themselves while you steer the head with Y. The Ears tab is
+  now called Animation and holds both.
 - **Stick dead zone:** a stick resting slightly off-centre no longer counts as driving.
   Before, it made the duck creep or turn and kept the straight rest pose from engaging.
 - **Fixed: the gamepad could go dead** when it connected just as a mode started. The

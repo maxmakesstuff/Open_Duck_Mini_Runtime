@@ -136,6 +136,17 @@ recordings:
     to the get-up later. Get-up stays in the build, off by default, marked
     experimental. Full write-up: `docs/STABILITY_SUITE.md`, "Get-up test results".
     Next: five unaided, filmed attempts on a charged battery.
+  - **Head life (new 2026-11-27, untested on hardware when written):**
+    `head_life.py` adds look-around and a step-locked neck bob as offsets on
+    `last_commands[3:7]` BEFORE the observation is built
+    (`RLWalk._apply_head_life`), so the policy sees the head command; the existing
+    overlay then sends it to the head servos. Trained head ranges (Open_Duck_Playground
+    `joystick.py`): neck -0.34..1.1, pitch +-0.78, yaw +-1.5, roll +-0.5, drawn at
+    random, never in rhythm with the gait, which is why the bob is the experiment.
+    Gait cycle 0.54 s, so the bob runs at about 3.7 Hz on head servos at kp 8. Config
+    key `head_life`, settings group `head`, telemetry `head_life`. Never edit
+    `last_commands` in place: the pad hands the same array back on ticks without a
+    fresh sample.
   - **"Rest pose stopped working" was stick drift, not the get-up.** From about 21:40
     the idle commands were a constant (0.005, 0, 0.017) instead of exactly 0, so the
     duck counted as driven and `RestPose` never engaged. An Xbox pad takes the stick

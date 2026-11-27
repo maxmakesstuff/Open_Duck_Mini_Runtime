@@ -57,6 +57,7 @@ WALK = {"action_scale": 0.23, "action_scale_target": 0.23, "velocity_clip": True
 CAM = {"ae": True, "awb": True, "exposure": 10000, "gain": 1.0, "brightness": 0.0,
        "contrast": 1.0, "saturation": 1.0, "sharpness": 1.0}
 ANT = {"free_anim": True, "sync": False}
+HEAD = {"look": False, "bob": False, "bob_deg": 3.0, "bob_phase_deg": 0.0, "look_scale": 1.0}
 
 # ---- stability suite mocks (policy slots, soft landing, get-up, recorder, health) ----
 SLOTS = [
@@ -253,6 +254,7 @@ def build_state():
             "governor": dict(WALK["governor"]),
         },
         "camera": {"available": True, "controls": dict(CAM)},
+        "head_life": dict(HEAD, active=bool(HEAD["look"] or HEAD["bob"])),
         "antenna_anim": ANT["free_anim"],
         "antenna_sync": ANT["sync"],
         "sounds": ["beep1.wav", "happy1.wav", "sad1.wav", "quack.wav"],
@@ -423,6 +425,8 @@ def handle_setting(body):
             WALK[key] = val
     elif group == "camera" and key in CAM:
         CAM[key] = val
+    elif group == "head" and key in HEAD:
+        HEAD[key] = val
     elif group == "antenna" and key in ANT:
         ANT[key] = bool(val)
     elif group == "stance" and key == "hold" and val:

@@ -232,6 +232,10 @@ saved until you press **Save**:
     moment you touch a stick or nudge the duck. If it never eases into the stance, a
     stick is resting far off-centre: switch the pad off and on again **without
     touching the sticks** (the pad takes their position at power-on as the centre).
+  - **Animation** — the ear wiggle, and **Head while walking**: *Look around* (slow
+    random glances) and *Head bob* (a small nod with each step; experimental, start
+    at 3° and try a few timings). Neither runs while you steer the head with **Y**,
+    during playback of a recording, or in a fall or get-up.
   - **Walk** — action scale, gait offset and **steering trim** (all kept per policy),
     joint speed limit, stick ramp, the stability governor, and the **IMU trim** card.
     Steering trim: if the duck curves with only the forward stick, move it until it

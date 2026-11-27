@@ -40,6 +40,8 @@ from mini_bdx_runtime.flight_recorder import (
 )
 from mini_bdx_runtime.command_shaper import CommandShaper
 from mini_bdx_runtime.rest_pose import RestPose
+from mini_bdx_runtime.head_life import HeadLife
+from mini_bdx_runtime import head_life as head_life_mod
 from mini_bdx_runtime.loop_health import LoopHealth
 # Optional: Web UI + scanner sound. The walk still runs if these are absent.
 try:
@@ -80,6 +82,10 @@ ACTION_SCALE_RAMP = 0.02
 # the body swings from the policy's own stance to the plain one. Waking is fast.
 REST_FADE_RAMP = 0.004
 STEER_TRIM_LIMIT = 0.5
+# Head command limits [neck_pitch, head_pitch, head_yaw, head_roll] (rad): the gamepad's
+# own ranges, all inside what the walk policies were trained with.
+HEAD_CMD_LO = np.array([-0.34, -0.78, -0.5, -0.5])
+HEAD_CMD_HI = np.array([1.1, 0.3, 0.5, 0.5])
 
 # DPAD-LEFT hold (s) to start a whole-body recording; walk_recording.pkl persists
 # the last take across restarts (handy for events).
@@ -408,6 +414,7 @@ class RLWalk:
         self.shaper = CommandShaper(self.duck_config.command_slew)
         pol_cfg = self.duck_config.policies if isinstance(self.duck_config.policies, dict) else {}
         self.rest_pose = RestPose(enabled=bool(pol_cfg.get("rest_straight", False)))
+        self.head_life = HeadLife(getattr(self.duck_config, "head_life", {}))
         self.loop_health = LoopHealth(self.control_freq)
         self.blackbox = FlightRecorder(
             self.control_freq, self.duck_config.flight_recorder,
@@ -492,6 +499,25 @@ class RLWalk:
         self._reset_policy_history()
         self.motor_targets = np.array(self.init_pos, dtype=float)
         self.prev_motor_targets = self.motor_targets.copy()
+        if getattr(self, "head_life", None) is not None:
+            self.head_life.reset()      # the head is at the stance: start from there
+
+    def _apply_head_life(self, now, driving):
+        """Add the look-around / head-bob offsets to this tick's head command. They
+        go in BEFORE the observation is built, so the policy sees the head command it
+        was trained to carry. Off, or not allowed, the offsets glide to zero."""
+        allowed = (self._activity is None
+                   and not getattr(self.xbox_controller, "head_control_mode", False)
+                   and self.recorder.state != "playing")
+        dt = self._tick_dt if 0.0 < self._tick_dt < 0.2 else 1.0 / self.control_freq
+        phase = self.imitation_i / self.PRM.nb_steps_in_period * 2.0 * np.pi
+        off = self.head_life.update(now, dt, gait_phase=phase, stepping=driving,
+                                    allowed=allowed)
+        if not any(abs(v) > 1e-6 for v in off):
+            return
+        cmds = np.array(self.last_commands, dtype=float)    # never edit in place
+        cmds[3:7] = np.clip(cmds[3:7] + np.array(off), HEAD_CMD_LO, HEAD_CMD_HI)
+        self.last_commands = cmds
 
     def _end_tick(self, t):
         self._note_control_tick()
@@ -958,6 +984,16 @@ class RLWalk:
             self._save_async({"getup": self._getup_config_dict()})
             self._notify("Get-up settings saved.")
 
+        head = settings.get("head") or {}
+        if head:
+            self.head_life.set(head)
+        if "head" in resets:
+            self.head_life.cfg = head_life_mod.clean_config({})
+            self._notify("Head motion reset to defaults (Save to keep).")
+        if "head" in saves:
+            self._save_async({"head_life": dict(self.head_life.cfg)})
+            self._notify("Head motion saved.")
+
         rec = settings.get("recorder") or {}
         if rec.get("mark"):
             ok = self.blackbox.mark("mark")
@@ -980,6 +1016,7 @@ class RLWalk:
         return {
             "activity": self._mode_name(),
             "soft": bool(self._soft),
+            "head_life": self.head_life.public(),
             "tilt_deg": round(float(self.tilt.tilt_deg), 1),
             "policy": self.policy_manager.status(),
             "safety": self.reflex.public(),
@@ -1714,6 +1751,8 @@ class RLWalk:
                     self._begin_reflex(t, event)
                     self._end_tick(t)
                     continue
+
+                self._apply_head_life(t, driving)
 
                 obs = self.get_obs(self._last_imu)
                 if obs is None:

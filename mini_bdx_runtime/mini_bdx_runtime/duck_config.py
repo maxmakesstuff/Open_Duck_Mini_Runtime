@@ -127,6 +127,8 @@ class DuckConfig:
         self.fall_reflex = self.json_config.get("fall_reflex", {})
         # Get-up policy runtime (getup.py). Missing -> disabled.
         self.getup = self.json_config.get("getup", {})
+        # Head life: look around / head bob while walking (head_life.py). Missing -> off.
+        self.head_life = self.json_config.get("head_life", {})
         # Black-box recorder (flight_recorder.py). Missing -> on.
         self.flight_recorder = self.json_config.get("flight_recorder", {})
         # Drive-command ramp (command_shaper.py). Missing -> off.
