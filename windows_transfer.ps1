@@ -34,6 +34,7 @@ $RemoteHost = 'bdxv2.local'
 $Files = @(
   # --- scripts (entrypoints) ---
   'scripts/head_puppet.py',
+  'scripts/mode_announce.py',
   'scripts/v2_rl_walk_mujoco.py',
   'scripts/probe_battery.py',
   'scripts/find_soft_offsets.py',
@@ -91,6 +92,9 @@ $Files = @(
   'mini_bdx_runtime/assets/scanner/lamp.wav',
   'mini_bdx_runtime/assets/scanner/lamp2.wav',
   'mini_bdx_runtime/assets/scanner/lamp3.wav',
+  # --- mode announcements (played right after the foot press) ---
+  'mini_bdx_runtime/assets/modes/walk_mode.wav',
+  'mini_bdx_runtime/assets/modes/headpuppet_mode.wav',
   # --- Xbox Bluetooth auto-reconnect kit ---
   'ops/bluetooth/README.md',
   'ops/bluetooth/setup-bluetooth-reconnect.sh',

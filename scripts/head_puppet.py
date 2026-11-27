@@ -28,6 +28,13 @@ slew-rate limited, so the loop seam (end pose -> start pose) and the entry into
 playback can never step a head servo hard. Live puppeting is unchanged. Legs
 are never moved.
 """
+# Say which mode is starting before the slow imports below (see mode_announce.py).
+try:
+    import mode_announce
+    _mode_clip = mode_announce.start("head_puppet") if __name__ == "__main__" else None
+except Exception:  # noqa: BLE001 - the announcement must never stop the start
+    mode_announce = _mode_clip = None
+
 import time
 import random
 import numpy as np
@@ -177,6 +184,9 @@ class HoldDetector:
 
 # ----------------------------- main loop -----------------------------
 def main():
+    # The clip must be over before pygame opens the speaker.
+    if mode_announce is not None:
+        mode_announce.finish(_mode_clip)
     duck_config = DuckConfig()
 
     # Phone Web UI (optional) — shares one ControlBus with the gamepad so both can

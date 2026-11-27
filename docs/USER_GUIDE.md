@@ -30,6 +30,11 @@ Power on, let it boot, then press and hold the foot for the mode you want for ab
 seconds until it springs to life (it re-checks the switches every ~5 s). If you hold no
 foot, it just waits. To switch modes, restart and hold the other foot.
 
+With a speaker fitted (`"speaker": true`), the duck **says which mode it is starting**
+as soon as the press went through, a few seconds before it moves. So you know which
+foot you held. The clips are `mini_bdx_runtime/assets/modes/walk_mode.wav` and
+`headpuppet_mode.wav`; replace them with your own to change the voice.
+
 ### Starting the robot from source (terminal on the robot)
 
 ```bash

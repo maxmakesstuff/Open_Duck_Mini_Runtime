@@ -48,6 +48,10 @@ are in [STABILITY_SUITE.md](STABILITY_SUITE.md)):
   main screen into Walk → Calibration, so the main screen fits small phones.
 - The Mac deploy script verifies every copied file by checksum.
 
+**Mode announcement**: the duck says "walk mode" or "head puppet mode" right after
+the foot press, before the slow start-up, so you know which foot you held. Needs the
+speaker; silent otherwise.
+
 **Gamepad tab** (TUNE → Gamepad, in walk and in head-puppet mode): see the paired
 gamepads, connect, disconnect or forget one, and pair a new one, all from the phone. No
 terminal needed when the pad has lost the duck. The reconnect watchdog

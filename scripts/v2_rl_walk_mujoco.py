@@ -1,3 +1,10 @@
+# Say which mode is starting before the slow imports below (see mode_announce.py).
+try:
+    import mode_announce
+    _mode_clip = mode_announce.start("walk") if __name__ == "__main__" else None
+except Exception:  # noqa: BLE001 - the announcement must never stop the start
+    mode_announce = _mode_clip = None
+
 import time
 import pickle
 
@@ -1805,6 +1812,9 @@ class RLWalk:
 
 
 if __name__ == "__main__":
+    # The clip must be over before pygame opens the speaker.
+    if mode_announce is not None:
+        mode_announce.finish(_mode_clip)
     import argparse
 
     parser = argparse.ArgumentParser()

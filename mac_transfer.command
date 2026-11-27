@@ -66,6 +66,7 @@ ssh_cmd() { ssh "${SSH_OPTS[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "$@"; }
 FILES=(
   # --- scripts (entrypoints) ---
   "scripts/head_puppet.py|scripts"
+  "scripts/mode_announce.py|scripts"
   "scripts/v2_rl_walk_mujoco.py|scripts"
   "scripts/probe_battery.py|scripts"
   "scripts/find_soft_offsets.py|scripts"
@@ -123,6 +124,9 @@ FILES=(
   "mini_bdx_runtime/assets/scanner/lamp.wav|mini_bdx_runtime/assets/scanner"
   "mini_bdx_runtime/assets/scanner/lamp2.wav|mini_bdx_runtime/assets/scanner"
   "mini_bdx_runtime/assets/scanner/lamp3.wav|mini_bdx_runtime/assets/scanner"
+  # --- mode announcements (played right after the foot press) ---
+  "mini_bdx_runtime/assets/modes/walk_mode.wav|mini_bdx_runtime/assets/modes"
+  "mini_bdx_runtime/assets/modes/headpuppet_mode.wav|mini_bdx_runtime/assets/modes"
   # --- Xbox Bluetooth auto-reconnect kit (run on the Pi; see ops/bluetooth/README.md) ---
   "ops/bluetooth/README.md|ops/bluetooth"
   "ops/bluetooth/setup-bluetooth-reconnect.sh|ops/bluetooth"
