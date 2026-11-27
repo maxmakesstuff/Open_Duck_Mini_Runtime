@@ -126,8 +126,12 @@ systemctl status duck-pad-reconnect.service
 journalctl -u duck-pad-reconnect -f      # watch it reconnect
 ```
 
-The service reads `PAD_MAC` from `/etc/default/duck-pad-reconnect` (written by
-the installer). Tunables you can add to that file: `POLL_INTERVAL` (default 5s),
+The watchdog follows **every paired gamepad** (BlueZ icon `input-gaming`), so a pad
+paired or forgotten in the Web UI (TUNE → Gamepad) needs no change here. `PAD_MAC` in
+`/etc/default/duck-pad-reconnect` (written by the installer) is optional: a pad named
+there is watched as well, for as long as it is still paired. With no paired pad the
+watchdog idles and does not scan. Ducks set up before 2026-11-27 run the older
+single-address script: re-run the two `install` lines above and restart the service. Tunables you can add to that file: `POLL_INTERVAL` (default 5s),
 `BACKOFF_MIN` (2s), `BACKOFF_MAX` (30s). After editing:
 `sudo systemctl restart duck-pad-reconnect`.
 

@@ -50,12 +50,29 @@ recordings:
 - The stability governor takes its lean from `self.tilt` (the gyro-fused estimate), no
   longer from the bare accelerometer, which made it throttle the stick 87 % of the time.
 - `rest_pose.py` + `policies.rest_straight`: optional straight stance while idle (the
-  loop fades `action_scale` to 0; the policy keeps running). **Not yet run on hardware.**
+  loop fades `action_scale` to 0; the policy keeps running). Confirmed on the duck.
 - `steer_trim` (per policy, third tuning key next to `action_scale` and the gait
-  offset): constant turn command while driving. **Not yet run on hardware.**
+  offset): constant turn command while driving. Confirmed on the duck.
 - Lesson worth keeping: both walk policies ignore the accelerometer's direction almost
   completely (replayed through the ONNX files). A standing pose or a drift cannot be
   fixed by rotating or trimming the IMU; check with the ONNX file before assuming so.
+
+### 2026-11-27: Gamepad tab (Bluetooth pairing from the phone)
+
+- `gamepad_pairing.py`: `GamepadManager` behind `GET/POST /api/gamepad`. Reads BlueZ
+  state with one `busctl` call (fallback: `bluetoothctl devices` + `info`), acts with
+  `bluetoothctl` on a worker thread, one action at a time, and judges success from the
+  state read back, not from the tool's output. Created by `WebControlServer` itself, so
+  walk and head puppet get it without changes to either script. Idle unless the tab
+  polls. MACs are validated before they reach a command line.
+- `webui/index.html`: tab `gamepad` in both modes, own slow poll while open.
+  `mock_server.py` runs the real manager on a pretend BlueZ.
+- `ops/bluetooth/duck-pad-reconnect.sh` watches all paired gamepads; `PAD_MAC` is
+  optional. Needs a one-time `sudo install` on ducks that have the old script, and the
+  release overlay needs the new file.
+- **Not yet run on hardware.** Open points: whether the walk service's user may talk to
+  BlueZ, and whether pairing works while the scan is still running (the code retries
+  once without it).
 
 ### New 2026-11-24, branch `feature/stability-suite`
 

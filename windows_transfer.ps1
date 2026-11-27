@@ -73,6 +73,7 @@ $Files = @(
   'mini_bdx_runtime/mini_bdx_runtime/loop_health.py',
   'mini_bdx_runtime/mini_bdx_runtime/imu_sanity.py',
   'mini_bdx_runtime/mini_bdx_runtime/rest_pose.py',
+  'mini_bdx_runtime/mini_bdx_runtime/gamepad_pairing.py',
   # --- selectable policies (ONNX + description; see policies/README.md) ---
   'policies/README.md',
   'policies/LICENSE-dk5426.txt',

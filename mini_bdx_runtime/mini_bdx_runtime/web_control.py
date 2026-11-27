@@ -31,6 +31,15 @@ _FALLBACK_HTML = (
 )
 
 
+try:
+    from mini_bdx_runtime import gamepad_pairing as _gamepad_pairing
+except ImportError:
+    try:
+        import gamepad_pairing as _gamepad_pairing
+    except ImportError:
+        _gamepad_pairing = None
+
+
 try:  # recordings need numpy; the server itself must start without it
     from mini_bdx_runtime import flight_recorder as _flight
 except ImportError:
@@ -73,12 +82,15 @@ def _parse_object(body_bytes):
     return d
 
 
-def handle_api(method, path, body_bytes, bus, now):
+def handle_api(method, path, body_bytes, bus, now, gamepads=None):
     """Route an /api/* request purely (no sockets). Returns
     (status:int, content_type:str, body:bytes) or None if `path` isn't an API
     route (caller then serves a static file)."""
     if not path.startswith("/api/"):
         return None
+
+    if path == "/api/gamepad":
+        return _gamepad(method, body_bytes, gamepads)
 
     if method == "GET" and path == "/api/state":
         return 200, "application/json", _json_bytes(bus.get_telemetry())
@@ -94,6 +106,25 @@ def handle_api(method, path, body_bytes, bus, now):
             return 400, "application/json", _json_bytes({"ok": False, "error": str(exc)})
 
     return 404, "application/json", _json_bytes({"ok": False, "error": "not found"})
+
+
+def _gamepad(method, body_bytes, gamepads):
+    """Bluetooth gamepad pairing (Gamepad tab). GET = state, POST {action, mac} = start
+    an action; its outcome arrives in the next GET as `message`."""
+    if gamepads is None:
+        return 503, "application/json", _json_bytes(
+            {"ok": False, "available": False, "error": "gamepad pairing is not available"})
+    if method == "GET":
+        return 200, "application/json", _json_bytes(gamepads.status())
+    if method != "POST":
+        return 404, "application/json", _json_bytes({"ok": False, "error": "not found"})
+    try:
+        d = _parse_object(body_bytes)
+    except (ValueError, TypeError) as exc:
+        return 400, "application/json", _json_bytes({"ok": False, "error": str(exc)})
+    ok, error = gamepads.request(str(d.get("action", "")), d.get("mac"))
+    status = 200 if ok else (409 if error == "busy" else 400)
+    return status, "application/json", _json_bytes({"ok": ok, "error": error})
 
 
 def _post_command(d, bus, now):
@@ -228,7 +259,7 @@ def get_lan_ip():
     return "127.0.0.1"
 
 
-def _make_handler(bus, clock, portal_url, camera_provider=None):
+def _make_handler(bus, clock, portal_url, camera_provider=None, gamepads=None):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -290,7 +321,7 @@ def _make_handler(bus, clock, portal_url, camera_provider=None):
                     "Content-Disposition": f'attachment; filename="{name}"'})
                 return
             if path.startswith("/api/"):
-                r = handle_api("GET", path, b"", bus, clock())
+                r = handle_api("GET", path, b"", bus, clock(), gamepads)
                 self._send(*r)
                 return
             if path in ("/", "/index.html"):
@@ -323,7 +354,7 @@ def _make_handler(bus, clock, portal_url, camera_provider=None):
             path = self.path.split("?", 1)[0]
             length = int(self.headers.get("Content-Length", 0) or 0)
             body = self.rfile.read(length) if length else b""
-            r = handle_api("POST", path, body, bus, clock())
+            r = handle_api("POST", path, body, bus, clock(), gamepads)
             if r is None:
                 self._send(404, "text/plain", b"not found")
             else:
@@ -337,8 +368,12 @@ class WebControlServer:
     start(); the control loop calls bus.set_telemetry(...) each tick."""
 
     def __init__(self, bus, host="0.0.0.0", port=DEFAULT_PORT, clock=None,
-                 camera_provider=None):
+                 camera_provider=None, gamepads=None):
         import time as _time
+        # Bluetooth gamepad pairing: idle until the Gamepad tab asks for it
+        if gamepads is None and _gamepad_pairing is not None:
+            gamepads = _gamepad_pairing.GamepadManager()
+        self.gamepads = gamepads
         self.bus = bus
         self.host = host
         self.port = port
@@ -350,7 +385,7 @@ class WebControlServer:
     def start(self):
         portal_url = f"http://{get_lan_ip()}:{self.port}/"
         handler = _make_handler(self.bus, self._clock, portal_url,
-                                self.camera_provider)
+                                self.camera_provider, self.gamepads)
         self._httpd = ThreadingHTTPServer((self.host, self.port), handler)
         self._httpd.daemon_threads = True
         self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)

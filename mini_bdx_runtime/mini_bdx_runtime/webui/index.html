@@ -392,6 +392,24 @@ details.more[open] summary::before{content:"−"}
 .tsec .sub{font-size:11px; color:var(--dim); line-height:1.45; margin:0 0 4px}
 .steps{margin:6px 0 0; padding-left:18px; font-size:11.5px; line-height:1.6; color:var(--dim)}
 .steps b{color:var(--ink); font-weight:400}
+
+/* gamepads (Bluetooth) */
+.pads{display:flex; flex-direction:column; gap:8px; margin-top:8px}
+.pad{display:grid; grid-template-columns:1fr auto; gap:3px 10px; align-items:center; padding:10px 11px;
+     border:1px solid var(--line); border-radius:11px; background:var(--well)}
+.pad.on{border-color:var(--ok)} .pad.wait{border-color:var(--amber)}
+.pad b{font-family:var(--sans); font-weight:700; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.pad .tag{font-size:9.5px; letter-spacing:.12em; color:var(--dim); white-space:nowrap}
+.pad.on .tag{color:var(--ok)} .pad.wait .tag{color:var(--amber)}
+.pad .mac{grid-column:1/-1; font-size:10px; color:var(--dim)}
+.pad .row2{grid-column:1/-1; margin-top:6px}
+.pad .row2.one{grid-template-columns:1fr}
+.btn.tbtn.quiet{border-color:var(--line); color:var(--dim)}
+.btn.tbtn.armed{border-color:var(--alarm); color:#ffcfc7}
+.pads.busy .btn{opacity:.4; pointer-events:none}
+.thelp.bad{border-left-color:var(--alarm); color:#ffcfc7}
+details.more.hidden{display:none}
+.btn.tsave[disabled]{opacity:.4; pointer-events:none}
 </style>
 
 <div id="app">
@@ -1026,6 +1044,21 @@ function paneCamera(s){
   return html+`</div>`;
 }
 
+function paneGamepad(s){
+  return `<div class="tsec"><span class="lbl">Your gamepads</span>
+      <div class="sub">Gamepads this duck knows. A known pad comes back by itself when you press its Xbox button. If it does not, tap CONNECT.</div>
+      <div class="pads" id="gpKnown"><div class="thint">Loading…</div></div>
+      <div class="thelp hidden" id="gpMsg" style="margin-top:8px"></div></div>
+    <div class="tsec"><span class="lbl">Add a gamepad</span>
+      <ol class="steps"><li>Switch the pad on and hold its small <b>pair button</b> on the top edge until the Xbox light blinks fast.</li>
+        <li>Tap <b>Search</b>, then pick the pad from the list.</li></ol>
+      <button class="btn tsave" id="gpScan">SEARCH FOR GAMEPADS</button>
+      <div class="pads" id="gpFound"></div>
+      <details class="more hidden" id="gpOtherBox"><summary>Other Bluetooth devices nearby</summary>
+        <div class="pads" id="gpOther"></div></details>
+      <div class="thint" style="margin-top:8px">Pause the duck first: you have no stick while the pad is away. A pad that was used with a console or another duck in between has to be forgotten here and paired again.</div></div>`;
+}
+
 const TRIM_CARD=`<div class="trim" id="trim">
       <span class="lbl">IMU trim</span>
       <div class="trim-ax"><span class="lbl tap" id="trimPitchLbl">pitch <i class="ic">i</i></span>
@@ -1041,14 +1074,14 @@ const TRIM_CARD=`<div class="trim" id="trim">
       <div class="thelp hidden" id="hlp_pitch" style="flex-basis:100%">Cancels a forward/back lean the IMU reads at rest (radians). Nudge <b>+</b> if the duck tips/falls backward, <b>−</b> if it tips forward — until it stands square. Then validate by walking; if it walks worse, set it back.</div>
       <div class="thelp hidden" id="hlp_roll" style="flex-basis:100%">Cancels a left/right lean the IMU reads at rest (radians). Nudge <b>+</b> if it leans/falls to one side, <b>−</b> for the other. Small steps; check by walking. Roll should sit near 0 on a symmetric duck.</div>
     </div>`;
-const PANES={policy:panePolicy,walk:paneWalk,safety:paneSafety,health:paneHealth,ears:paneEars,camera:paneCamera};
-const TAB_NAMES={policy:"Policy",walk:"Walk",safety:"Safety",health:"Health",ears:"Ears",camera:"Camera"};
+const PANES={policy:panePolicy,walk:paneWalk,safety:paneSafety,health:paneHealth,ears:paneEars,camera:paneCamera,gamepad:paneGamepad};
+const TAB_NAMES={policy:"Policy",walk:"Walk",safety:"Safety",health:"Health",ears:"Ears",camera:"Camera",gamepad:"Gamepad"};
 let curTab={walk:"policy",head_puppet:"camera"};
 try{ const t=JSON.parse(sessionStorage.getItem("duckTab")||"null"); if(t&&t.walk&&t.head_puppet) curTab=t; }catch(_){}
 function tabsFor(mode,s){
   const ears=((s.features||{}).antennas)!==false;
   const t = mode==="head_puppet" ? ["camera"] : ["policy","walk","safety","health"];
-  if(ears) t.push("ears"); return t;
+  if(ears) t.push("ears"); t.push("gamepad"); return t;
 }
 
 function renderTune(mode){
@@ -1061,11 +1094,14 @@ function renderTune(mode){
     curTab[mode]=b.dataset.tab; try{sessionStorage.setItem("duckTab",JSON.stringify(curTab))}catch(_){}
     buzz(6); stopCam(); renderTune(mode); body.scrollTop=0;
     if(curTab[mode]==="camera" && ((lastState||{}).camera||{}).available) startCam(); }));
+  const onTab=$("tuneTabs").querySelector(".tab.on");      // six tabs do not fit a phone: keep the open one in view
+  if(onTab&&onTab.scrollIntoView) onTab.scrollIntoView({block:"nearest",inline:"nearest"});
   body.innerHTML=PANES[tab](s);
   polSig="";
   wireTune();
   updateTuneLive(s);
   if(tab==="health") loadLogs();
+  if(tab==="gamepad") startGamepad(); else stopGamepad();
 }
 
 function applyCamDisable(){ const ae=$("tc_camera_ae"); if(!ae)return; const on=ae.dataset.on==="1";
@@ -1127,6 +1163,7 @@ function wireTune(){
     if(!on) setTimeout(loadLogs,1500); });
   const lr=$("logRefresh"); if(lr) lr.addEventListener("click",()=>{ buzz(6); loadLogs(); });
   wireTrim();
+  wireGamepad();
   applyCamDisable();
 }
 
@@ -1140,6 +1177,65 @@ function loadLogs(){ const list=$("logList"); if(!list) return;
         <b>${esc(lb.what)}</b><i>SAVE ↓</i><span>${esc(lb.when)} · ${(l.bytes/1024).toFixed(0)} kB</span></a>`; }).join("")
       : `<div class="thint">Nothing recorded yet. Tap MARK NOW, or let the duck fall once.</div>`;
   }).catch(()=>{ list.innerHTML=`<div class="thint">Could not load the list.</div>`; }); }
+
+/* gamepads: its own slow poll, only while the Gamepad tab is open (each answer costs
+   the Pi a process, so it must not ride on the 4 Hz state poll) */
+let gpTimer=null, gpSig="", gpArmed="", gpArmT=null, gpSent=null;
+const GP_BUSY={pair:"PAIRING…",connect:"CONNECTING…",disconnect:"DISCONNECTING…",forget:"FORGETTING…"};
+function stopGamepad(){ if(gpTimer){clearTimeout(gpTimer); gpTimer=null;} gpSig=""; gpArmed=""; gpSent=null; }
+function startGamepad(){ stopGamepad(); gamepadTick(); }
+function gamepadTick(){
+  if(!tuneOpen || !$("gpKnown")){ gpTimer=null; return; }
+  fetch("/api/gamepad").then(r=>r.json()).then(g=>{ if(!$("gpKnown")) return; renderGamepad(g);
+    gpTimer=setTimeout(gamepadTick,(g.scanning||g.busy)?1000:2500); })
+  .catch(()=>{ gpTimer=setTimeout(gamepadTick,3000); });
+}
+function gamepadDo(action,mac){ buzz(14); gpArmed=""; gpSent={action,mac:mac||"",t:Date.now()}; gpSig="";
+  post("/api/gamepad",mac?{action,mac}:{action}).then(()=>{ if(gpTimer){clearTimeout(gpTimer);} gamepadTick(); }); }
+function padCard(d,g){
+  const busy=(g.busy&&g.busy_mac===d.mac)?g.busy:(gpSent&&gpSent.mac===d.mac?gpSent.action:"");
+  const tag=busy?GP_BUSY[busy]:d.connected?"CONNECTED":d.paired?"NOT CONNECTED":"";
+  const armed=gpArmed===d.mac;
+  const btns=!d.paired?`<div class="row2 one"><button class="btn tbtn" data-gp="pair">${d.gamepad?"PAIR THIS GAMEPAD":"PAIR"}</button></div>`
+    :`<div class="row2"><button class="btn tbtn" data-gp="${d.connected?"disconnect":"connect"}">${d.connected?"DISCONNECT":"CONNECT"}</button>
+       <button class="btn tbtn ${armed?"armed":"quiet"}" data-gp="forget">${armed?"TAP AGAIN TO FORGET":"FORGET"}</button></div>`;
+  return `<div class="pad${d.connected?" on":""}${busy?" wait":""}" data-mac="${esc(d.mac)}">
+    <b>${esc(d.name||"Unnamed device")}</b><span class="tag">${tag}</span>
+    <span class="mac">${esc(d.mac)}</span>${btns}</div>`; }
+function renderGamepad(g){
+  if(gpSent && (g.busy || g.message || Date.now()-gpSent.t>4000)) gpSent=null;   // the server has taken over
+  const sig=JSON.stringify([g,gpArmed,gpSent]); if(sig===gpSig) return; gpSig=sig;
+  const known=$("gpKnown"), found=$("gpFound"), other=$("gpOther"), msg=$("gpMsg"), scan=$("gpScan");
+  const devs=g.devices||[], paired=devs.filter(d=>d.paired), fresh=devs.filter(d=>!d.paired);
+  const pads=fresh.filter(d=>d.gamepad), rest=fresh.filter(d=>!d.gamepad);
+  const working=!!(g.busy||gpSent);
+  if(!g.available){
+    known.innerHTML=`<div class="thint">Bluetooth is not available on this duck${g.error?": "+esc(g.error):"."}</div>`;
+    found.innerHTML=""; scan.disabled=true; msg.classList.add("hidden"); return; }
+  scan.disabled=working;
+  known.innerHTML = paired.length ? paired.map(d=>padCard(d,g)).join("")
+    : `<div class="thint">No gamepad is paired with this duck yet. Add one below.</div>`;
+  found.innerHTML = pads.map(d=>padCard(d,g)).join("")
+    || (g.scanning?`<div class="thint">Searching… keep the pad's light blinking fast.</div>`:"");
+  other.innerHTML = rest.map(d=>padCard(d,g)).join("");
+  $("gpOtherBox").classList.toggle("hidden",!rest.length);
+  [known,found,other].forEach(el=>el.classList.toggle("busy",working));
+  scan.textContent = g.scanning?`■ STOP SEARCHING · ${g.scan_left_s} s`:"SEARCH FOR GAMEPADS";
+  scan.dataset.on = g.scanning?"1":"0";
+  const text = g.message || (!g.powered?"The duck's Bluetooth is switched off. Tap SEARCH or CONNECT to switch it on.":"");
+  msg.textContent=text; msg.classList.toggle("hidden",!text);
+  msg.classList.toggle("bad",!!g.message && !g.message_ok);
+}
+function wireGamepad(){
+  const scan=$("gpScan"); if(!scan) return;
+  scan.addEventListener("click",()=>gamepadDo(scan.dataset.on==="1"?"stop_scan":"scan"));
+  ["gpKnown","gpFound","gpOther"].forEach(id=>$(id).addEventListener("click",e=>{ const b=e.target.closest("[data-gp]"); if(!b) return;
+    const mac=b.closest(".pad").dataset.mac, act=b.dataset.gp;
+    if(act==="forget" && gpArmed!==mac){ buzz(8); gpArmed=mac; gpSig=""; clearTimeout(gpArmT);
+      gpArmT=setTimeout(()=>{ gpArmed=""; gpSig=""; },4000);
+      b.textContent="TAP AGAIN TO FORGET"; b.classList.remove("quiet"); b.classList.add("armed"); return; }
+    gamepadDo(act,mac); }));
+}
 
 /* policy cards: rebuilt only when something about them changed */
 let polSig="", liveActive=null;
@@ -1247,7 +1343,7 @@ function openTune(tab){ tuneOpen=true; stopCam(); const mode=curMode||"walk";
   const cam=(lastState&&lastState.camera)||{};
   if(mode==="head_puppet" && curTab[mode]==="camera" && cam.available) startCam(); }
 function closeTune(){ tuneOpen=false; const t=$("tune"); t.classList.remove("show");
-  t.setAttribute("aria-hidden","true"); stopCam(); }
+  t.setAttribute("aria-hidden","true"); stopCam(); stopGamepad(); }
 $("tuneBtn").addEventListener("click",()=>tuneOpen?closeTune():openTune());
 $("polChip").addEventListener("click",()=>{ buzz(8); openTune("policy"); });
 $("markBtn").addEventListener("click",()=>{ const b=$("markBtn");

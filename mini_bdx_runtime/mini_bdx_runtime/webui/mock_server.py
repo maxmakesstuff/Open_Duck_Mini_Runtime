@@ -27,6 +27,7 @@ from offset_tuner import OffsetTuner  # noqa: E402
 import fall_reflex  # noqa: E402
 import getup as getup_mod  # noqa: E402
 import command_shaper  # noqa: E402
+import gamepad_pairing  # noqa: E402
 
 INDEX = os.path.join(HERE, "index.html")
 OFFSETS_PAGE = os.path.join(HERE, "offsets.html")
@@ -432,6 +433,71 @@ def handle_setting(body):
     print("SETTING", group, key, val)
 
 
+class FakeBluez:
+    """A pretend BlueZ behind the real GamepadManager, so the Gamepad tab can be
+    clicked through on a laptop: one known pad, and a second one that shows up a few
+    seconds into a search. Connecting takes a moment, like the real thing."""
+
+    def __init__(self):
+        self.dev = {"AA:BB:CC:DD:EE:01": dict(Name="Xbox Wireless Controller", Paired=True,
+                                             Trusted=True, Connected=True, Icon="input-gaming")}
+        self.scan_t0 = None
+
+    class _Scan:
+        def __init__(self, owner):
+            self.owner = owner
+
+        def poll(self):
+            o = self.owner
+            return None if o.scan_t0 and time.time() - o.scan_t0 < gamepad_pairing.SCAN_SECONDS else 0
+
+        def terminate(self):
+            self.owner.scan_t0 = None
+
+        def wait(self, timeout=None):
+            return 0
+
+    def spawn_scan(self, seconds):
+        self.scan_t0 = time.time()
+        return self._Scan(self)
+
+    def run(self, args, timeout):
+        if args[0] == "busctl":
+            if self.scan_t0 and time.time() - self.scan_t0 > 3:
+                self.dev.setdefault("AA:BB:CC:DD:EE:02", dict(
+                    Name="Xbox Wireless Controller", Paired=False, Trusted=False,
+                    Connected=False, Icon="input-gaming", RSSI=-51))
+                self.dev.setdefault("AA:BB:CC:DD:EE:03", dict(
+                    Name="Living room TV", Paired=False, Trusted=False, Connected=False,
+                    Icon="video-display", RSSI=-72))
+            objs = {"/org/bluez/hci0": {"org.bluez.Adapter1": {"Powered": {"data": True}}}}
+            for mac, d in self.dev.items():
+                props = {k: {"data": v} for k, v in d.items()}
+                props["Address"] = {"data": mac}
+                objs["/dev_" + mac] = {"org.bluez.Device1": props}
+            return 0, json.dumps({"data": [objs]})
+        print("BLUETOOTH", " ".join(args[1:]))
+        cmd, d = args[1], self.dev.get(args[2]) if len(args) > 2 else None
+        if d is None:
+            return 0, ""
+        time.sleep(1.5)
+        if cmd == "pair":
+            d["Paired"] = True
+        elif cmd == "trust":
+            d["Trusted"] = True
+        elif cmd == "connect":
+            d["Connected"] = True
+        elif cmd == "disconnect":
+            d["Connected"] = False
+        elif cmd == "remove":
+            del self.dev[args[2]]
+        return 0, ""
+
+
+_BLUEZ = FakeBluez()
+GAMEPADS = gamepad_pairing.GamepadManager(run=_BLUEZ.run, spawn_scan=_BLUEZ.spawn_scan)
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="application/json"):
         data = body.encode("utf-8") if isinstance(body, str) else body
@@ -457,6 +523,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(build_state()))
         elif path == "/api/logs":
             self._send(200, json.dumps({"logs": FAKE_LOGS}))
+        elif path == "/api/gamepad":
+            self._send(200, json.dumps(GAMEPADS.status()))
         elif path.startswith("/api/logs/"):
             self._send(200, b"mock recording", "application/octet-stream")
         elif path == "/api/camera/frame.jpg":
@@ -486,6 +554,10 @@ class Handler(BaseHTTPRequestHandler):
                 print("TRIM", TRIM)
         elif path == "/api/setting":
             handle_setting(body)
+        elif path == "/api/gamepad":
+            ok, error = GAMEPADS.request(str(body.get("action", "")), body.get("mac"))
+            self._send(200 if ok else 400, json.dumps({"ok": ok, "error": error}))
+            return
         elif path == "/api/command":
             if body.get("active"):
                 print("COMMAND", {k: body.get(k) for k in

@@ -2,9 +2,12 @@
 #
 # duck-pad-reconnect.sh
 #
-# Belt-and-suspenders watchdog: keep the trusted Xbox controller connected to
-# the Pi without ever restarting the robot. Whenever the pad is not connected,
-# issue `bluetoothctl connect <MAC>` on a capped exponential backoff. As soon as
+# Belt-and-suspenders watchdog: keep the paired gamepads connected to the Pi
+# without ever restarting the robot. It watches EVERY paired gamepad, so a pad
+# added or forgotten in the Web UI (Gamepad tab) is picked up without touching
+# this service. PAD_MAC is optional: a pad named there is watched too, as long
+# as it is still paired. While no watched pad is connected, it issues
+# `bluetoothctl connect <MAC>` on a capped exponential backoff. As soon as
 # the pad is switched back on (it advertises), BlueZ + this loop rejoin it within
 # a few seconds.
 #
@@ -16,20 +19,16 @@ set -euo pipefail
 # ----------------------------------------------------------------------------
 # Config (all overridable via environment / EnvironmentFile)
 # ----------------------------------------------------------------------------
-PAD_MAC="${PAD_MAC:-${1:-}}"          # controller MAC; arg or env
+PAD_MAC="${PAD_MAC:-${1:-}}"          # optional extra controller MAC; arg or env
 POLL_INTERVAL="${POLL_INTERVAL:-5}"   # seconds between "is it connected?" checks
 BACKOFF_MIN="${BACKOFF_MIN:-2}"       # first reconnect backoff (seconds)
 BACKOFF_MAX="${BACKOFF_MAX:-30}"      # cap for reconnect backoff (seconds)
 
 log() { printf '%s duck-pad-reconnect: %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*"; }
 
-if [[ -z "$PAD_MAC" ]]; then
-    log "ERROR: PAD_MAC is not set. Set it in /etc/default/duck-pad-reconnect or pass as arg."
-    exit 2
-fi
-if ! [[ "$PAD_MAC" =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]]; then
-    log "ERROR: PAD_MAC='$PAD_MAC' is not a valid MAC (expected AA:BB:CC:DD:EE:FF)."
-    exit 2
+if [[ -n "$PAD_MAC" ]] && ! [[ "$PAD_MAC" =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]]; then
+    log "WARNING: PAD_MAC='$PAD_MAC' is not a valid MAC (expected AA:BB:CC:DD:EE:FF); ignoring it."
+    PAD_MAC=""
 fi
 PAD_MAC="${PAD_MAC^^}"
 
@@ -52,9 +51,26 @@ nap() {
     wait "$!" 2>/dev/null || true
 }
 
-# True if the pad currently reports Connected: yes.
+# True if the given pad currently reports Connected: yes.
 is_connected() {
-    bluetoothctl info "$PAD_MAC" 2>/dev/null | grep -q "Connected: yes"
+    bluetoothctl info "$1" 2>/dev/null | grep -q "Connected: yes"
+}
+
+# Print the MACs to watch, one per line: every paired gamepad, plus PAD_MAC if
+# it is still paired. A pad forgotten in the Web UI drops out by itself.
+watched_pads() {
+    local mac info
+    {
+        # BlueZ >= 5.65 has `devices Paired`; older ones have `paired-devices`.
+        bluetoothctl devices Paired 2>/dev/null || true
+        bluetoothctl paired-devices 2>/dev/null || true
+    } | awk '$1 == "Device" { print toupper($2) }' | sort -u | while read -r mac; do
+        info="$(bluetoothctl info "$mac" 2>/dev/null || true)"
+        grep -q "Paired: yes" <<<"$info" || continue
+        if [[ "$mac" == "$PAD_MAC" ]] || grep -q "Icon: input-gaming" <<<"$info"; then
+            printf '%s\n' "$mac"
+        fi
+    done
 }
 
 # Make sure the adapter is powered and we hold an agent (needed after a
@@ -68,29 +84,43 @@ ensure_adapter() {
 # ----------------------------------------------------------------------------
 # Main loop
 # ----------------------------------------------------------------------------
-log "Watching controller $PAD_MAC (poll ${POLL_INTERVAL}s, backoff ${BACKOFF_MIN}-${BACKOFF_MAX}s)."
+log "Watching paired gamepads${PAD_MAC:+ and $PAD_MAC} (poll ${POLL_INTERVAL}s, backoff ${BACKOFF_MIN}-${BACKOFF_MAX}s)."
 ensure_adapter
-
-# Warn (once) if the pad isn't trusted -- auto-reconnect is unreliable without it.
-if ! bluetoothctl info "$PAD_MAC" 2>/dev/null | grep -q "Trusted: yes"; then
-    log "WARNING: $PAD_MAC is not marked Trusted. Run: bluetoothctl trust $PAD_MAC"
-fi
 
 backoff="$BACKOFF_MIN"
 while [[ "$RUNNING" -eq 1 ]]; do
-    if is_connected; then
-        # Connected and happy: reset backoff and poll slowly.
+    mapfile -t pads < <(watched_pads)
+
+    # Nothing paired: nothing to do, and above all no scanning.
+    if [[ "${#pads[@]}" -eq 0 ]]; then
+        backoff="$BACKOFF_MIN"
+        nap "$POLL_INTERVAL"
+        continue
+    fi
+
+    # One connected pad is enough: reset backoff and poll slowly.
+    any=0
+    for mac in "${pads[@]}"; do
+        if is_connected "$mac"; then any=1; break; fi
+    done
+    if [[ "$any" -eq 1 ]]; then
         backoff="$BACKOFF_MIN"
         nap "$POLL_INTERVAL"
         continue
     fi
 
     ensure_adapter
-    log "Pad not connected -> attempting reconnect (next retry backoff ${backoff}s)."
+    log "No pad connected -> attempting reconnect of ${pads[*]} (next retry backoff ${backoff}s)."
     # A short scan window helps BlueZ notice a pad that just powered on.
     bluetoothctl --timeout 4 scan on >/dev/null 2>&1 || true
-    if bluetoothctl connect "$PAD_MAC" >/dev/null 2>&1 && is_connected; then
-        log "Reconnected $PAD_MAC."
+    for mac in "${pads[@]}"; do
+        if bluetoothctl connect "$mac" >/dev/null 2>&1 && is_connected "$mac"; then
+            log "Reconnected $mac."
+            any=1
+            break
+        fi
+    done
+    if [[ "$any" -eq 1 ]]; then
         backoff="$BACKOFF_MIN"
         continue
     fi

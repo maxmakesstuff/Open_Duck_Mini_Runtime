@@ -98,6 +98,26 @@ defaults live (not saved until Save).
 Black-box recordings in `~/duck_logs`, newest first. `GET /api/logs/<name>` downloads one.
 Only plain `.npz` names inside that folder are served.
 
+### `GET /api/gamepad`  → Bluetooth gamepads (Gamepad tab, both modes)
+```json
+{"available":true,"error":"","powered":true,"scanning":false,"scan_left_s":0,
+ "busy":"","busy_mac":"","message":"","message_ok":true,
+ "devices":[{"mac":"AA:BB:CC:DD:EE:01","name":"Xbox Wireless Controller",
+             "paired":true,"trusted":true,"connected":true,"gamepad":true,"rssi":null}]}
+```
+Poll it only while the tab is open (about every 2.5 s, every 1 s while `scanning` or
+`busy`): each answer costs the Pi one `busctl` process. The server caches for 1 s.
+`devices` is sorted connected, paired, likely gamepads, signal; unpaired devices without
+a name are left out. `gamepad` is a guess from the device icon and name.
+
+### `POST /api/gamepad`  `{"action": …, "mac": "AA:BB:CC:DD:EE:01"}`
+Actions: `scan` (20 s, ends by itself), `stop_scan`, `pair` (pairs, trusts, connects),
+`connect`, `disconnect`, `forget`. All but the scan actions need `mac`. The reply only
+says the action was accepted (`200`), refused as malformed (`400`) or that another one
+is still running (`409`). The outcome is read back from BlueZ and arrives in the next
+`GET` as `message` / `message_ok`. Implemented in `gamepad_pairing.py` on top of
+`bluetoothctl`; nothing of it runs in the control loop.
+
 ### Joint offsets, over `POST /api/setting`
 A POST only queues the request for the control loop, so `{"ok":true}` means "received", not
 "applied". The loop's answer is the next `joint_offsets` telemetry: a refused edit simply

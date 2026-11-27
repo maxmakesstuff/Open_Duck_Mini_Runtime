@@ -235,7 +235,25 @@ saved until you press **Save**:
   - **Ears** — antenna animation.
 - **Head-puppet mode** — a **live camera view** plus **exposure, gain, brightness,
   contrast, saturation, sharpness and white-balance** controls.
-- **Both modes** — ear-antenna **free animation** on/off and **ear-sync** on/off.
+- **Both modes** — ear-antenna **free animation** on/off and **ear-sync** on/off, and
+  the **Gamepad** tab (below).
+
+### 🎮 Gamepad tab — pair and reconnect without a terminal
+**TUNE → Gamepad**, in walk and in head-puppet mode.
+
+- **Your gamepads** lists the pads this duck knows, with **CONNECTED** or **NOT
+  CONNECTED**. A known pad normally comes back by itself when you press its Xbox button.
+  If it does not, tap **CONNECT** (the pad must be switched on).
+- **DISCONNECT** drops the link. A pad that stays switched on may reconnect by itself.
+- **FORGET** (tap twice) removes the pad from the duck. Use it for a pad you no longer
+  use, or when a pad refuses to connect: forget it, then pair it again. That is also
+  the fix after the pad was used with a console or another duck in between.
+- **Add a gamepad:** switch the pad on, hold its small pair button on the top edge until
+  the Xbox light blinks fast, tap **SEARCH FOR GAMEPADS** and pick it from the list. The
+  search runs for 20 seconds. Other Bluetooth devices nearby are folded away below.
+
+Pause the duck before you disconnect or forget the pad you are driving with. The
+on-screen sticks keep working either way.
 
 Two touches that make tuning easy:
 
