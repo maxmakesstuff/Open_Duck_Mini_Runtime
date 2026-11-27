@@ -212,9 +212,18 @@ class GetUpController:
         factor = c["soft_factor"] if self.elapsed < c["soft_s"] else 1.0
         return c["max_velocity"] * factor * self.dt
 
-    def _standing(self, pos, acc, now):
+    def _standing(self, pos, acc, now, tilt_deg=None):
         c = self.cfg
-        up = float(acc[2] / max(float(np.linalg.norm(acc)), 1e-6))
+        if tilt_deg is not None and np.isfinite(tilt_deg):
+            # The fused tilt (gyro + accelerometer), when the caller has one. The bare
+            # accelerometer is useless at the very moment that matters: a duck that
+            # has just landed on its feet rocks, and single samples read 0.3 while it
+            # stands at 3 degrees. On 2026-11-27 the MAX duck stood for 0.85 s that
+            # way without ever counting as standing, and the get-up policy tipped it
+            # over again.
+            up = math.cos(math.radians(min(abs(float(tilt_deg)), 180.0)))
+        else:
+            up = float(acc[2] / max(float(np.linalg.norm(acc)), 1e-6))
         # light filter: one hard knock must not read as "upright" or "fallen"
         self.up_filtered = up if self.up_filtered is None else (
             self.up_filtered + 0.3 * (up - self.up_filtered))
@@ -227,9 +236,10 @@ class GetUpController:
         self.up_since = None
         return False
 
-    def step(self, pos, vel, gyro, acc, contacts, now):
+    def step(self, pos, vel, gyro, acc, contacts, now, tilt_deg=None):
         """Advance one tick. Returns the joint targets (always inside the limits and
-        at most one speed-limit step from the previous ones)."""
+        at most one speed-limit step from the previous ones). `tilt_deg` is the
+        caller's fused lean from upright, used for the standing test if given."""
         pos = np.asarray(pos, dtype=float)
         vel = np.asarray(vel, dtype=float)
         c = self.cfg
@@ -261,7 +271,7 @@ class GetUpController:
         lim = self._speed_limit()
         self.targets = np.clip(want, self.targets - lim, self.targets + lim)
 
-        if self._standing(pos, acc_c, now):
+        if self._standing(pos, acc_c, now, tilt_deg):
             self.phase = "handoff"
             self.handoff_from = self.targets.copy()
             self.handoff_t = now

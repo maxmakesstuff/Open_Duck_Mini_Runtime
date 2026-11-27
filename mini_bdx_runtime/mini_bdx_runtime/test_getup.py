@@ -177,6 +177,29 @@ def test_the_model_stands_level_and_a_level_duck_is_left_alone():
     assert up[2] / np.linalg.norm(up) > 0.9999
 
 
+def test_fused_tilt_latches_standing_through_accelerometer_knocks():
+    """A duck that has just landed on its feet rocks: the accelerometer throws single
+    samples far off while it stands. With the fused tilt the standing test holds."""
+    knocks = [np.array([0.0, 0.0, 9.81]), np.array([9.0, 0.0, 2.5])]   # every 2nd sample bad
+    ctl = _ctl()
+    ctl.start(HOME, 0.0)
+    for i in range(40):                                # 0.8 s, accelerometer only
+        ctl.step(HOME, np.zeros(14), np.zeros(3), knocks[i % 2], [1, 1], (i + 1) * 0.02)
+    assert ctl.phase == "run"                          # never latched
+    ctl = _ctl()
+    ctl.start(HOME, 0.0)
+    for i in range(40):
+        ctl.step(HOME, np.zeros(14), np.zeros(3), knocks[i % 2], [1, 1], (i + 1) * 0.02,
+                 tilt_deg=5.0)
+    assert ctl.phase in ("handoff", "done")
+    ctl = _ctl()                                       # lying down stays lying down
+    ctl.start(HOME, 0.0)
+    for i in range(40):
+        ctl.step(HOME, np.zeros(14), np.zeros(3), np.array([0.0, 0.0, 9.81]), [1, 1],
+                 (i + 1) * 0.02, tilt_deg=80.0)
+    assert ctl.phase == "run"
+
+
 def test_a_blocked_joint_is_named():
     ctl = _ctl()
     ctl.start(HOME, 0.0)

@@ -811,7 +811,7 @@ class RLWalk:
             return
         imu = self._last_imu
         targets = ctl.step(pos, vel, imu["gyro"], imu["accelero"],
-                           self.feet_contacts.get(), now)
+                           self.feet_contacts.get(), now, tilt_deg=self.tilt.tilt_deg)
         self._write_targets(targets)
         self._rec_tick(now, pos=pos, vel=vel, action=ctl.a1)
         if ctl.phase == "done":

@@ -118,6 +118,17 @@ recordings:
     falls back and loops in a lopsided pose, skidding on its head. Cause of the block
     not yet found (cable from the rewiring, thigh against something, or torque).
     A get-up now reports blocked joints (`GetUpController.blocked()`).
+  - **What unblocked it:** the MAX duck wore a decorative "tie" that held the neck
+    pitch servo back. With it the neck and head needed ~1.5 s to get under the body
+    and the left hip stalled alone under the weight; without it ~0.7 s and no stall.
+    Anything restricting a joint kills the get-up. First attempt after removing it:
+    the duck was on its feet from 3.7 s to 4.6 s (fused tilt under 20 deg, both feet
+    down), then the get-up policy tipped it over backwards, because the standing test
+    never latched: it used the bare accelerometer, which threw single samples of 0.3
+    while the duck stood at 3 deg. The standing test now uses the fused tilt
+    (`step(..., tilt_deg=)`); replayed on that recording it latches at 4.12 s.
+    Instrumented replay of a get-up start: bus sags 7.5 V -> 5.6 V at 6.8 A peak, no
+    protection flags; left hip pitch briefly at 100 % load / 3.4 A.
   - `SIM_STANDING_ACC` was wrong: (-1.22, -1.95, 9.54) from dk5426's
     `imu_offset_eval.py` is not their get-up model at rest. Measured: (0.03, 0, 9.81),
     fed to the policy unchanged. The old value rotated a level IMU by 15 deg and kept
