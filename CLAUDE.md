@@ -145,6 +145,13 @@ recordings:
     `head_life`, settings group `head`, telemetry `head_life`. Never edit
     `last_commands` in place: the pad hands the same array back on ticks without a
     fresh sample.
+  - **Sight lead** (`head_life` keys `lead`, `lead_s`): head yaw follows the turn and
+    sidestep command (0.45 rad at full turn, 0.30 at full sidestep, threshold 15 % of
+    the stick), and `HeadLife.body_scale` holds the turn/sidestep command at 0 for
+    `lead_s` after a steering onset or reversal, then fades it in over 0.15 s. Forward
+    speed and stops are never delayed. Sign convention assumed from the pad code
+    (stick left = positive turn, positive sidestep, positive head yaw); confirm on the
+    duck that the head looks INTO the turn.
   - **Head bob in step with the gait: tried, failed, removed.** Neck pitch nodding twice
     per gait cycle (0.54 s cycle, so about 3.7 Hz) off the gait clock. On the duck it
     visibly upset the walk; the one recorded walk at 10 deg fell after 8 s. The policy

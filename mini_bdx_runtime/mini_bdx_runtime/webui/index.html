@@ -1029,11 +1029,15 @@ function paneHealth(s){
 const HEAD_CONTROLS=[
   {k:"look_scale",name:"Glance size",min:0.2,max:1.5,step:0.1,
    help:"1 = glances up to about 25° to either side. Smaller = subtler."},
+  {k:"lead_s",name:"Head start",min:0,max:0.8,step:0.05,unit:"s",
+   help:"With <b>Look where it goes</b> on: how long the head turns before the body follows. 0 = head and body turn together. Longer looks more deliberate but makes steering feel slower."},
 ];
 function paneHead(s){ const h=s.head_life; if(!h) return "";
   return `<div class="tsec"><span class="lbl">Head while walking</span>
     ${toggleRow("head",{k:"look",name:"Look around",
       help:"The head drifts to a new glance direction every few seconds and comes back. Slow and smooth. Pauses by itself while you steer the head with <b>Y</b>."},!!h.look)}
+    ${toggleRow("head",{k:"lead",name:"Look where it goes",
+      help:"Steer into a turn or a sidestep and the head looks that way first, then the body follows. Takes the head over from Look around while you steer. Walking straight ahead or stopping is never delayed."},!!h.lead)}
     ${rows("head",HEAD_CONTROLS,k=>h[k]!=null?h[k]:0)}
     <button class="btn tsave" data-save="head">SAVE HEAD MOTION TO DUCK</button>
     <button class="btn treset" data-reset="head">↺ RESET HEAD MOTION TO DEFAULTS</button></div>`; }

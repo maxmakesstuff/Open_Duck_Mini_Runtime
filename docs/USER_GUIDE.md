@@ -233,8 +233,10 @@ saved until you press **Save**:
     stick is resting far off-centre: switch the pad off and on again **without
     touching the sticks** (the pad takes their position at power-on as the centre).
   - **Animation** — the ear wiggle, and **Head while walking**: *Look around* (slow
-    random glances, size adjustable). It does not run while you steer the head with
-    **Y**, during playback of a recording, or in a fall or get-up.
+    random glances, size adjustable) and *Look where it goes* (the head turns into a
+    turn or sidestep first, the body follows after the **Head start**, 0.25 s by
+    default; set it to 0 if steering feels slow). Neither runs while you steer the
+    head with **Y**, during playback of a recording, or in a fall or get-up.
   - **Walk** — action scale, gait offset and **steering trim** (all kept per policy),
     joint speed limit, stick ramp, the stability governor, and the **IMU trim** card.
     Steering trim: if the duck curves with only the forward stick, move it until it

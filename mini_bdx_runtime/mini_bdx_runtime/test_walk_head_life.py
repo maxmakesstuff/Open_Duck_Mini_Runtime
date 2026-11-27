@@ -65,6 +65,49 @@ def test_puppeteer_taking_the_head_stops_it():
     H.run_duck(scenario, action=0.0)
 
 
+def steer(duck, turn=0.0, forward=0.0):
+    """Make the fake pad hold a turn (and forward) command from now on."""
+    plain = duck.xbox_controller.get_last_command
+
+    def pushed():
+        cmds, buttons, lt, rt = plain()
+        cmds = list(cmds)
+        cmds[0], cmds[2] = forward, turn
+        return cmds, buttons, lt, rt
+    duck.xbox_controller.get_last_command = pushed
+
+
+def test_sight_lead_head_first_then_the_turn_reaches_the_policy():
+    def scenario(duck, post, state):
+        post("/api/setting", {"group": "head", "key": "lead", "value": True})
+        yield from H.ticks(20)
+        steer(duck, turn=0.8, forward=0.1)
+        seen = []
+        for _ in range(100):
+            yield
+            seen.append(np.array(duck.policy.obs[-1][CMD], dtype=float))
+        seen = np.array(seen)[2:]                          # the pad's new command needs a tick to arrive
+        assert np.all(seen[:, 0] == 0.1)                   # forward speed is never held back
+        assert np.all(seen[:10, 2] == 0.0)                 # the turn waits ...
+        assert seen[10, 5] > 0.1                           # ... while the head yaw is already moving
+        assert abs(seen[-1, 2] - 0.8) < 1e-9               # then the full turn goes through
+        assert abs(seen[-1, 5] - 0.8 * 0.45) < 0.01        # head looks into the turn
+        assert np.all(np.diff(seen[:, 2]) >= -1e-12)
+    H.run_duck(scenario, action=0.0)
+
+
+def test_sight_lead_off_leaves_the_commands_alone():
+    def scenario(duck, post, state):
+        yield from H.ticks(20)
+        steer(duck, turn=0.8, forward=0.1)
+        yield from H.ticks(2)                              # the pad's new command needs a tick to arrive
+        for _ in range(40):
+            yield
+            c = np.array(duck.policy.obs[-1][CMD], dtype=float)
+            assert c[2] == 0.8 and not np.any(c[3:7])
+    H.run_duck(scenario, action=0.0)
+
+
 def test_settings_save_to_the_config_and_load_again():
     def scenario(duck, post, state):
         post("/api/setting", {"group": "head", "key": "look", "value": True})
@@ -81,7 +124,7 @@ def test_settings_save_to_the_config_and_load_again():
         if "head_life" in saved:
             break
         time.sleep(0.05)
-    assert saved["head_life"] == {"look": True, "look_scale": 1.5}
+    assert saved["head_life"] == {"look": True, "look_scale": 1.5, "lead": False, "lead_s": 0.25}
     assert saved["joints_offsets"] == H.OFFSETS and saved["some_other_key"] == "keep me"
 
     def again(duck, post, state):

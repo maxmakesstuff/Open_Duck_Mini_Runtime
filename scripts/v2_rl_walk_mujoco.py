@@ -503,18 +503,26 @@ class RLWalk:
             self.head_life.reset()      # the head is at the stance: start from there
 
     def _apply_head_life(self, now):
-        """Add the look-around offsets to this tick's head command. They
+        """Add the look-around / sight-lead offsets to this tick's head command. They
         go in BEFORE the observation is built, so the policy sees the head command it
         was trained to carry. Off, or not allowed, the offsets glide to zero."""
         allowed = (self._activity is None
                    and not getattr(self.xbox_controller, "head_control_mode", False)
                    and self.recorder.state != "playing")
         dt = self._tick_dt if 0.0 < self._tick_dt < 0.2 else 1.0 / self.control_freq
-        off = self.head_life.update(now, dt, allowed=allowed)
-        if not any(abs(v) > 1e-6 for v in off):
+        off = self.head_life.update(now, dt, allowed=allowed,
+                                    turn=float(self.last_commands[2]),
+                                    side=float(self.last_commands[1]))
+        hold = float(self.head_life.body_scale)
+        if hold >= 1.0 and not any(abs(v) > 1e-6 for v in off):
             return
         cmds = np.array(self.last_commands, dtype=float)    # never edit in place
         cmds[3:7] = np.clip(cmds[3:7] + np.array(off), HEAD_CMD_LO, HEAD_CMD_HI)
+        if hold < 1.0:
+            # Sight lead: the head turns first, the turn and the sidestep follow.
+            # Forward and backward speed are never held back.
+            cmds[1] *= hold
+            cmds[2] *= hold
         self.last_commands = cmds
 
     def _end_tick(self, t):
