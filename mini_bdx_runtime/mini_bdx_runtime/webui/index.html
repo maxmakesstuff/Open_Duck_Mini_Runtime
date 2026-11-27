@@ -714,12 +714,15 @@ function setBanner(s){
   const n=$("note"); n.textContent=s.message||""; n.classList.toggle("show",!!s.message);
   // after a fall: the two things you can do, as buttons
   const walk=s.mode!=="head_puppet", gu=s.getup||{}, fb=$("fallbar"), g=$("getupBtn"), r=$("resumeBtn");
-  const running=act==="getup", show=walk&&(running||(s.fallen&&!BUSY[act]));
+  // Also while paused: the duck accepts a get-up from pause when it is laid down by
+  // hand (it is not "fallen" then), so the button has to be there for that too.
+  const running=act==="getup", byHand=!!s.paused&&!s.fallen&&!!gu.enabled;
+  const show=walk&&(running||((s.fallen||byHand)&&!BUSY[act]));
   fb.classList.toggle("show",show);
   if(show){
     const offer=running||!!gu.enabled;
-    g.style.display=offer?"":"none"; r.style.display=running?"none":"";
-    fb.classList.toggle("one",running||!offer);
+    g.style.display=offer?"":"none"; r.style.display=(running||byHand)?"none":"";
+    fb.classList.toggle("one",running||byHand||!offer);
     g.textContent=running?"■ STOP":(gu.ready?"GET UP":"GET UP · LOADING");
     g.classList.toggle("stop",running); g.classList.toggle("go",!running);
     g.disabled=!running&&!gu.ready;
