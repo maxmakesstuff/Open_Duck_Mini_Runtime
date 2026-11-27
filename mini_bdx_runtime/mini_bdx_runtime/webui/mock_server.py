@@ -461,6 +461,14 @@ class FakeBluez:
         self.scan_t0 = time.time()
         return self._Scan(self)
 
+    def pair_session(self, mac):
+        print("BLUETOOTH pair session", mac)
+        time.sleep(3)
+        d = self.dev.get(mac)
+        if d is not None:
+            d["Paired"] = d["Trusted"] = d["Connected"] = True
+        return ""
+
     def run(self, args, timeout):
         if args[0] == "busctl":
             if self.scan_t0 and time.time() - self.scan_t0 > 3:
@@ -476,11 +484,7 @@ class FakeBluez:
         if d is None:
             return 0, ""
         time.sleep(1.5)
-        if cmd == "pair":
-            d["Paired"] = True
-        elif cmd == "trust":
-            d["Trusted"] = True
-        elif cmd == "connect":
+        if cmd == "connect":
             d["Connected"] = True
         elif cmd == "disconnect":
             d["Connected"] = False
@@ -490,7 +494,8 @@ class FakeBluez:
 
 
 _BLUEZ = FakeBluez()
-GAMEPADS = gamepad_pairing.GamepadManager(run=_BLUEZ.run, spawn_scan=_BLUEZ.spawn_scan)
+GAMEPADS = gamepad_pairing.GamepadManager(run=_BLUEZ.run, spawn_scan=_BLUEZ.spawn_scan,
+                                          pair_session=_BLUEZ.pair_session, hold_file="")
 
 
 class Handler(BaseHTTPRequestHandler):

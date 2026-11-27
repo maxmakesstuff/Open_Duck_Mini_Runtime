@@ -14,6 +14,7 @@ argument, so all of it unit-tests off the robot.
 """
 import os
 import re
+import select
 import subprocess
 import threading
 import time
@@ -260,14 +261,89 @@ def _spawn_scan(seconds):
                             stderr=subprocess.DEVNULL)
 
 
+def _pair_session(mac, timeout=40.0):
+    """Pair, trust and connect `mac` inside ONE interactive bluetoothctl session.
+
+    Pairing needs an agent that stays alive to confirm the request. A one-shot
+    `bluetoothctl pair` run without a terminal has none: BlueZ logs "No agent available
+    for request type 2" and the pairing fails (seen on a real duck). Here the session
+    registers a NoInputNoOutput agent, so an Xbox pad pairs without any question, and
+    answers yes should BlueZ ask anyway. Returns the transcript; whether it worked is
+    read from BlueZ afterwards, not from this text."""
+    try:
+        p = subprocess.Popen(["bluetoothctl"], stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    except OSError as exc:
+        return str(exc)
+    fd = p.stdout.fileno()
+    os.set_blocking(fd, False)
+    seen = []
+
+    def send(command):
+        try:
+            p.stdin.write((command + "\n").encode())
+            p.stdin.flush()
+        except OSError:
+            pass
+
+    def pump(seconds, until=None):
+        end, tail = time.monotonic() + seconds, ""
+        while time.monotonic() < end and p.poll() is None:
+            if not select.select([fd], [], [], 0.2)[0]:
+                continue
+            try:
+                chunk = os.read(fd, 4096).decode("utf-8", "replace")
+            except OSError:
+                continue
+            if not chunk:
+                break
+            seen.append(chunk)
+            if "(yes/no)" in chunk:
+                send("yes")
+            tail = (tail + chunk)[-400:]
+            if until and re.search(until, tail):
+                return True
+        return False
+
+    try:
+        deadline = time.monotonic() + timeout
+        pump(1.5)                              # let it load the adapter and devices
+        for command in ("agent off", "agent NoInputNoOutput", "default-agent"):
+            send(command)
+            pump(0.4)
+        send("scan on")                        # the pad must be seen fresh to be paired
+        pump(4.0)
+        send("pair " + mac)
+        if pump(max(5.0, deadline - time.monotonic() - 12),
+                r"Pairing successful|Failed to pair|AlreadyExists|not available"):
+            send("trust " + mac)               # trusted = may reconnect by itself later
+            pump(1.0)
+        send("scan off")
+        pump(0.5)
+        send("connect " + mac)
+        pump(10.0, r"Connection successful|Failed to connect|not available")
+        send("quit")
+        pump(1.0)
+    finally:
+        if p.poll() is None:
+            p.terminate()
+            try:
+                p.wait(timeout=3)
+            except Exception:  # noqa: BLE001
+                p.kill()
+    return "".join(seen)
+
+
 class GamepadManager:
     """State + actions behind /api/gamepad. One action at a time; actions run on a
     worker thread and report through status()."""
 
-    def __init__(self, run=_run, spawn_scan=_spawn_scan, clock=time.monotonic,
+    def __init__(self, run=_run, spawn_scan=_spawn_scan, pair_session=_pair_session,
+                 clock=time.monotonic,
                  sleep=time.sleep, cache_s=1.0, background=True, hold_file=HOLD_FILE):
         self._run = run
         self._spawn_scan = spawn_scan
+        self._pair_session = pair_session
         self._clock = clock
         self._sleep = sleep
         self._cache_s = cache_s
@@ -495,37 +571,31 @@ class GamepadManager:
         if self._find(mac) is None:
             return False, "That gamepad is no longer in range. Search again."
         label = self._label(mac)
+        self._stop_scan()                  # the pairing session runs its own search
         self._power_on()
         self._take_adapter(keep=mac)
         try:
-            return self._pair(mac, label)
+            self._pair_session(mac)
         finally:
             self._hold_watchdog(False)
-
-    def _pair(self, mac, label):
-        for attempt in (0, 1):
-            self._run(["bluetoothctl", "pair", mac], 30)
-            self._refresh(force=True)
-            d = self._find(mac)
-            if d is not None and d["paired"]:
-                break
-            if attempt == 0:          # some pads refuse to pair while a scan is running
-                self._stop_scan()
-                self._hold_watchdog(True)
-                self._sleep(1.0)
-        else:
+        d = self._settled(mac, lambda d: d is not None and d["paired"])
+        if d is None or not d["paired"]:
             return False, (f"Could not pair {label}. Put it back into pairing mode "
                            "(light blinking fast) and try again.")
-        # trusted = BlueZ lets the pad reconnect by itself when it is switched on
-        self._run(["bluetoothctl", "trust", mac], 6)
-        self._stop_scan()
-        self._hold_watchdog(True)
-        self._run(["bluetoothctl", "connect", mac], 20)
-        self._refresh(force=True)
-        d = self._find(mac)
-        if d is not None and d["connected"]:
+        if d["connected"]:
             return True, f"{label} is paired and connected."
         return True, f"{label} is paired. Press its Xbox button to connect."
+
+    def _settled(self, mac, done, tries=6):
+        """Read the device back, giving BlueZ up to ~3 s to finish what was asked."""
+        for i in range(tries):
+            self._refresh(force=True)
+            d = self._find(mac)
+            if done(d):
+                return d
+            if i < tries - 1:
+                self._sleep(0.5)
+        return d
 
     def _do_connect(self, mac):
         label = self._label(mac)
@@ -554,9 +624,13 @@ class GamepadManager:
 
     def _do_forget(self, mac):
         label = self._label(mac)
-        self._run(["bluetoothctl", "remove", mac], 10)
-        self._refresh(force=True)
-        d = self._find(mac)
+        self._take_adapter()               # or the watchdog reconnects it under our hands
+        try:
+            self._run(["bluetoothctl", "disconnect", mac], 10)
+            self._run(["bluetoothctl", "remove", mac], 10)
+            d = self._settled(mac, lambda d: d is None or not d["paired"])
+        finally:
+            self._hold_watchdog(False)
         if d is not None and d["paired"]:
             return False, f"Could not forget {label}."
         return True, f"{label} is forgotten. Pair it again to use it."

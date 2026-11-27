@@ -41,7 +41,8 @@ class FakeBluez:
         self.refused_scans = 0
         self.calls = []
         self.scans = []
-        self.pair_fails_while_scanning = False
+        self.sessions = []
+        self.slow_remove = 0            # status reads the removal takes to show
         self.reachable = {PAD, NEW}
         self.dev = {
             PAD: dict(Name="Xbox Wireless Controller", Paired=True, Trusted=True,
@@ -64,11 +65,24 @@ class FakeBluez:
         self.scans.append(s)
         return s
 
+    def pair_session(self, mac):
+        """What the interactive session with an agent achieves."""
+        self.sessions.append((mac, self.scanning()))
+        d = self.dev.get(mac)
+        if d is None or mac not in self.reachable:
+            return "Failed to pair: org.bluez.Error.ConnectionAttemptFailed"
+        d["Paired"] = d["Trusted"] = d["Connected"] = True
+        return "Pairing successful"
+
     def run(self, args, timeout):
         self.calls.append(list(args))
         if args[0] == "busctl":
             if not self.busctl:
                 return 127, "busctl is not installed"
+            if self.slow_remove:
+                self.slow_remove -= 1
+                if not self.slow_remove:
+                    self.dev.pop(self.removing, None)
             return 0, fake_managed_objects(self.dev, discovering=self.scanning())
         assert args[0] == "bluetoothctl"
         cmd = args[1]
@@ -93,16 +107,8 @@ class FakeBluez:
                        f"\tConnected: {yn(d['Connected'])}\n")
         if d is None:
             return 1, f"Device {mac} not available"
-        if cmd == "pair":
-            if self.pair_fails_while_scanning and self.scanning():
-                return 1, "Failed to pair: org.bluez.Error.InProgress"
-            if mac not in self.reachable:
-                return 1, "Failed to pair: org.bluez.Error.ConnectionAttemptFailed"
-            d["Paired"] = True
-            return 0, "Pairing successful"
-        if cmd == "trust":
-            d["Trusted"] = True
-            return 0, "trust succeeded"
+        if cmd == "pair":       # a one-shot pair has no agent on the real duck
+            return 1, "Failed to pair: org.bluez.Error.AuthenticationFailed"
         if cmd == "connect":
             if mac not in self.reachable:
                 return 1, "Failed to connect: org.bluez.Error.Failed"
@@ -113,6 +119,9 @@ class FakeBluez:
             d["Connected"] = False
             return 0, "Successful disconnected"
         if cmd == "remove":
+            if self.slow_remove:
+                self.removing = mac
+                return 0, "Device has been removed"
             del self.dev[mac]
             return 0, "Device has been removed"
         raise AssertionError(f"unexpected command {args}")
@@ -120,8 +129,8 @@ class FakeBluez:
 
 def manager(bz, **kw):
     kw.setdefault("hold_file", "")
-    return GamepadManager(run=bz.run, spawn_scan=bz.spawn_scan, sleep=lambda s: None,
-                          cache_s=0.0, background=False, **kw)
+    return GamepadManager(run=bz.run, spawn_scan=bz.spawn_scan, pair_session=bz.pair_session,
+                          sleep=lambda s: None, cache_s=0.0, background=False, **kw)
 
 
 def by_mac(status):
@@ -257,14 +266,29 @@ def test_scan_then_pair_trusts_and_connects():
     assert not bz.scanning() and not m.status()["scanning"]
 
 
-def test_pair_retries_once_without_the_scan():
+def test_pair_goes_through_the_agent_session_with_our_scan_stopped():
+    # found on the real duck: a one-shot `bluetoothctl pair` has no agent and fails
     bz = FakeBluez()
-    bz.pair_fails_while_scanning = True
     m = manager(bz)
     m.request("scan")
     m.request("pair", NEW)
-    assert by_mac(m.status())[NEW]["paired"]
-    assert sum(1 for c in bz.calls if c[:2] == ["bluetoothctl", "pair"]) == 2
+    assert bz.sessions == [(NEW, False)]
+    assert not any(c[:2] == ["bluetoothctl", "pair"] for c in bz.calls)
+    st = m.status()
+    assert st["message_ok"] and "paired and connected" in st["message"]
+
+
+def test_forget_waits_for_bluez_and_drops_the_link_first():
+    # found on the real duck: "could not forget", yet the pad was gone a moment later
+    bz = FakeBluez()
+    bz.dev[PAD]["Connected"] = True
+    bz.slow_remove = 3
+    m = manager(bz)
+    m.request("forget", PAD)
+    st = m.status()
+    assert st["message_ok"] and PAD not in by_mac(st)
+    cmds = [c[1] for c in bz.calls if c[0] == "bluetoothctl" and c[1] in ("disconnect", "remove")]
+    assert cmds == ["disconnect", "remove"]
 
 
 def test_pair_failure_and_unknown_device():
@@ -277,7 +301,7 @@ def test_pair_failure_and_unknown_device():
     assert not by_mac(st)[NEW]["paired"]
     m.request("pair", "AA:BB:CC:DD:EE:99")
     assert "Search again" in m.status()["message"]
-    assert not any(c[:2] == ["bluetoothctl", "pair"] and c[2].endswith("99") for c in bz.calls)
+    assert [mac for mac, _ in bz.sessions] == [NEW]
 
 
 def test_forget_removes_the_pad():
