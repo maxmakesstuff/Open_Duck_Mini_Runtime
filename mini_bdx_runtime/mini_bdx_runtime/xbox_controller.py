@@ -72,6 +72,12 @@ def merge_axes(pad_axes, pad_trig, web_active, web_axes, web_trig):
     return l_x, l_y, r_x, r_y, lt, rt
 
 
+def neutral_command():
+    """What get_commands() returns with everything released: no motion, no buttons."""
+    return (np.zeros(7), False, False, False, False, False, False, 0.0, 0.0,
+            False, False, False, False)
+
+
 class XBoxController:
     def __init__(self, command_freq, only_head_control=False, web_bus=None):
         self.command_freq = command_freq
@@ -124,7 +130,7 @@ class XBoxController:
                         f"hats={self.p1.get_numhats()}"
                     )
                 return True
-        except pygame.error as e:
+        except Exception as e:  # noqa: BLE001
             if verbose:
                 print(f"[xbox] joystick open failed: {e}")
             self.p1 = None
@@ -134,9 +140,28 @@ class XBoxController:
         return self.p1 is not None
 
     def commands_worker(self):
+        """Reader thread. It must never die: the loops keep using the last command
+        they got, so a dead reader means a frozen head, or a duck that keeps walking
+        on its last stick position. Any failure becomes one neutral command."""
         while True:
-            self.cmd_queue.put(self.get_commands())
+            try:
+                cmd = self.get_commands()
+            except Exception as e:  # noqa: BLE001
+                self._note_fault("command read failed", e)
+                self.p1 = None
+                self._reset_pad_buttons()
+                cmd = neutral_command()
+            self.cmd_queue.put(cmd)
             time.sleep(1 / self.command_freq)
+
+    def _note_fault(self, what, err):
+        """Log a reader fault, at most once every 5 s."""
+        now = time.time()
+        self.fault_count = getattr(self, "fault_count", 0) + 1
+        if now - getattr(self, "_last_fault_log", 0.0) >= 5.0:
+            self._last_fault_log = now
+            print(f"[xbox] {what}: {type(err).__name__}: {err} - pad dropped, re-probing "
+                  f"(fault #{self.fault_count})")
 
     # ------------------------------------------------------------ pad reading
     def _read_pad(self):
@@ -162,8 +187,16 @@ class XBoxController:
                 elif event.type == pygame.JOYBUTTONUP:
                     self._reset_pad_buttons()
             pygame.event.pump()
-        except pygame.error:
+        except Exception as e:  # noqa: BLE001
+            # Not only pygame.error: pygame 2.6.0 raises SystemError (from KeyError)
+            # out of event.get() when a pad that connects mid-run is registered
+            # twice by the kernel (hid-generic, then the microsoft driver) and the
+            # first one is removed before it was ever opened. Seen on the MAX duck
+            # on 2026-11-27; it killed this thread and the pad stayed dead.
+            if not isinstance(e, pygame.error):
+                self._note_fault("event read failed", e)
             self.p1 = None
+            self._reset_pad_buttons()
 
         # --- periodic re-probe if we have no pad (belt-and-suspenders vs the
         #     ADDED event, which some SDL builds drop on headless setups) ---
@@ -185,7 +218,7 @@ class XBoxController:
                 right_trigger = 0.0
             hat = self.p1.get_hat(0) if self.p1.get_numhats() > 0 else None
             axes = [self.p1.get_axis(i) for i in range(self.p1.get_numaxes())]
-        except pygame.error:
+        except Exception:  # noqa: BLE001
             self.p1 = None
             self._reset_pad_buttons()
             return neutral

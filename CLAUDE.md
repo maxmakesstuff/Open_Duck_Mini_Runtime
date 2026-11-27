@@ -98,6 +98,17 @@ recordings:
   - BlueZ needs a few seconds until a removed or newly paired pad shows in its state.
     Judging at once reported "could not forget" for a forget that had worked;
     `_settled` waits for it.
+  - **The gamepad reader thread must never die.** pygame 2.6.0 raised `SystemError`
+    (from `KeyError: 0`) out of `pygame.event.get()` when the pad connected just as
+    head puppet started at boot: the kernel registers the pad twice (hid-generic,
+    then the microsoft driver) and the first one is removed before it was opened.
+    Only `pygame.error` was caught, the thread died, and pad and Web UI stick were
+    dead until a restart. In walk mode a dead reader leaves the duck on its last
+    stick command. `xbox_controller.py` now catches everything, drops the pad,
+    re-probes, and sends one neutral command (`test_xbox_reader_faults.py`).
+  - The launcher runs Python with buffered output, so a mode's prints and tracebacks
+    reach the journal late or only at exit. Read them with
+    `journalctl -b _PID=<python pid>`.
 
 ### New 2026-11-24, branch `feature/stability-suite`
 
