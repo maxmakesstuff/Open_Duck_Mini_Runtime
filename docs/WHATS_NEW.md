@@ -52,8 +52,8 @@ are in [STABILITY_SUITE.md](STABILITY_SUITE.md)):
 gamepads, connect, disconnect or forget one, and pair a new one, all from the phone. No
 terminal needed when the pad has lost the duck. The reconnect watchdog
 (`ops/bluetooth/duck-pad-reconnect.sh`) now follows every paired gamepad instead of one
-fixed address, so pads added or forgotten in the app are picked up by themselves.
-**Not yet run on a real duck.**
+fixed address, so pads added or forgotten in the app are picked up by themselves, and
+it steps aside while the app searches or pairs.
 
 **Joint offsets from your phone** (`/offsets`, or **TUNE** in Walk mode), based on a
 contribution by **Gene Turnbow** ([SCIFI.radio](https://scifi.radio/)). Hold the stance,

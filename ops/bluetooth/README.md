@@ -130,7 +130,10 @@ The watchdog follows **every paired gamepad** (BlueZ icon `input-gaming`), so a 
 paired or forgotten in the Web UI (TUNE → Gamepad) needs no change here. `PAD_MAC` in
 `/etc/default/duck-pad-reconnect` (written by the installer) is optional: a pad named
 there is watched as well, for as long as it is still paired. With no paired pad the
-watchdog idles and does not scan. Ducks set up before 2026-11-27 run the older
+watchdog idles and does not scan. While the Web UI searches, pairs or connects it
+touches `/dev/shm/duck-gamepad-hold`; the watchdog stays off the adapter while that file
+is younger than 60 s (`HOLD_FILE`, `HOLD_SECONDS`), because BlueZ refuses to search
+while a connection attempt is pending. Ducks set up before 2026-11-27 run the older
 single-address script: re-run the two `install` lines above and restart the service. Tunables you can add to that file: `POLL_INTERVAL` (default 5s),
 `BACKOFF_MIN` (2s), `BACKOFF_MAX` (30s). After editing:
 `sudo systemctl restart duck-pad-reconnect`.

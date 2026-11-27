@@ -23,6 +23,11 @@ PAD_MAC="${PAD_MAC:-${1:-}}"          # optional extra controller MAC; arg or en
 POLL_INTERVAL="${POLL_INTERVAL:-5}"   # seconds between "is it connected?" checks
 BACKOFF_MIN="${BACKOFF_MIN:-2}"       # first reconnect backoff (seconds)
 BACKOFF_MAX="${BACKOFF_MAX:-30}"      # cap for reconnect backoff (seconds)
+# The Web UI's Gamepad tab touches this file while it searches, pairs or connects.
+# While it is fresh we stay off the adapter: BlueZ refuses to search while one of
+# our connection attempts is pending.
+HOLD_FILE="${HOLD_FILE:-/dev/shm/duck-gamepad-hold}"
+HOLD_SECONDS="${HOLD_SECONDS:-60}"
 
 log() { printf '%s duck-pad-reconnect: %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*"; }
 
@@ -54,6 +59,13 @@ nap() {
 # True if the given pad currently reports Connected: yes.
 is_connected() {
     bluetoothctl info "$1" 2>/dev/null | grep -q "Connected: yes"
+}
+
+# True while the Web UI has asked us to pause (see HOLD_FILE).
+held() {
+    local t
+    t="$(stat -c %Y "$HOLD_FILE" 2>/dev/null)" || return 1
+    (( $(date +%s) - t < HOLD_SECONDS ))
 }
 
 # Print the MACs to watch, one per line: every paired gamepad, plus PAD_MAC if
@@ -89,6 +101,11 @@ ensure_adapter
 
 backoff="$BACKOFF_MIN"
 while [[ "$RUNNING" -eq 1 ]]; do
+    if held; then
+        backoff="$BACKOFF_MIN"
+        nap 2
+        continue
+    fi
     mapfile -t pads < <(watched_pads)
 
     # Nothing paired: nothing to do, and above all no scanning.
@@ -114,6 +131,7 @@ while [[ "$RUNNING" -eq 1 ]]; do
     # A short scan window helps BlueZ notice a pad that just powered on.
     bluetoothctl --timeout 4 scan on >/dev/null 2>&1 || true
     for mac in "${pads[@]}"; do
+        held && break
         if bluetoothctl connect "$mac" >/dev/null 2>&1 && is_connected "$mac"; then
             log "Reconnected $mac."
             any=1

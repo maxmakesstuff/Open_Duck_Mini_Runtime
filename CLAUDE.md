@@ -60,7 +60,7 @@ recordings:
 ### 2026-11-27: Gamepad tab (Bluetooth pairing from the phone)
 
 - `gamepad_pairing.py`: `GamepadManager` behind `GET/POST /api/gamepad`. Reads BlueZ
-  state with one `busctl` call (fallback: `bluetoothctl devices` + `info`), acts with
+  state with one plain-text `busctl` call (fallback: `bluetoothctl devices` + `info`), acts with
   `bluetoothctl` on a worker thread, one action at a time, and judges success from the
   state read back, not from the tool's output. Created by `WebControlServer` itself, so
   walk and head puppet get it without changes to either script. Idle unless the tab
@@ -70,9 +70,26 @@ recordings:
 - `ops/bluetooth/duck-pad-reconnect.sh` watches all paired gamepads; `PAD_MAC` is
   optional. Needs a one-time `sudo install` on ducks that have the old script, and the
   release overlay needs the new file.
-- **Not yet run on hardware.** Open points: whether the walk service's user may talk to
-  BlueZ, and whether pairing works while the scan is still running (the code retries
-  once without it).
+- Run on the MAX duck 2026-11-27 (status, search, stop, connect through the manager
+  over SSH; new watchdog installed there, old one kept as `.pre-gamepad-tab.bak`).
+  **Pair and forget, and the tab in a browser against the real duck, are still to be
+  done with the pad in hand.** Found on the hardware, none of it visible in the mock:
+  - `busctl --json` exits 1 with no output as soon as one device carries
+    `ManufacturerData` (`a{qv}`, integer keys), which is every device that has
+    advertised. Hence the plain-text parser (`parse_busctl_reply`).
+  - BlueZ answers `InProgress` to a search while a connection attempt is pending, and
+    the watchdog is in one almost all the time a paired pad is away. The manager
+    touches `/dev/shm/duck-gamepad-hold` (watchdog pauses while it is under 60 s old)
+    and cancels pending attempts with `bluetoothctl disconnect` before it searches,
+    pairs or connects.
+  - BlueZ 5.66 can get stuck answering `InProgress` with nothing running (it did after
+    interrupted test scans). Switching the adapter off and on clears it; the manager
+    does that as the last of three tries, never while a pad is connected.
+  - `bluetoothctl scan on` keeps running when BlueZ refused it. Whether a search runs
+    is read from the adapter's `Discovering`, not from the process.
+  - A pad that links and drops at once with `hog-lib ... unlikely error` in the
+    bluetooth journal has a stale bond (paired with something else since): forget it
+    and pair again.
 
 ### New 2026-11-24, branch `feature/stability-suite`
 

@@ -470,12 +470,7 @@ class FakeBluez:
                 self.dev.setdefault("AA:BB:CC:DD:EE:03", dict(
                     Name="Living room TV", Paired=False, Trusted=False, Connected=False,
                     Icon="video-display", RSSI=-72))
-            objs = {"/org/bluez/hci0": {"org.bluez.Adapter1": {"Powered": {"data": True}}}}
-            for mac, d in self.dev.items():
-                props = {k: {"data": v} for k, v in d.items()}
-                props["Address"] = {"data": mac}
-                objs["/dev_" + mac] = {"org.bluez.Device1": props}
-            return 0, json.dumps({"data": [objs]})
+            return 0, gamepad_pairing.fake_managed_objects(self.dev)
         print("BLUETOOTH", " ".join(args[1:]))
         cmd, d = args[1], self.dev.get(args[2]) if len(args) > 2 else None
         if d is None:

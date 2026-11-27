@@ -7,7 +7,7 @@ import json
 
 from control_bus import ControlBus
 from gamepad_pairing import (
-    GamepadManager, looks_like_gamepad, normalize_mac, parse_devices, parse_info,
+    GamepadManager, fake_managed_objects, looks_like_gamepad, parse_busctl_reply, normalize_mac, parse_devices, parse_info,
     parse_managed_objects, sort_devices,
 )
 from web_control import handle_api
@@ -36,6 +36,9 @@ class FakeBluez:
 
     def __init__(self, busctl=True):
         self.busctl = busctl
+        self.pending_connect = False    # the watchdog's open connection attempt
+        self.stuck = False              # BlueZ refusing to search until a power cycle
+        self.refused_scans = 0
         self.calls = []
         self.scans = []
         self.pair_fails_while_scanning = False
@@ -52,10 +55,12 @@ class FakeBluez:
         }
 
     def scanning(self):
-        return any(s.alive for s in self.scans)
+        return any(s.alive and s.accepted for s in self.scans)
 
     def spawn_scan(self, seconds):
         s = FakeScan()
+        s.accepted = not (self.pending_connect or self.stuck)   # refused, tool keeps running
+        self.refused_scans += not s.accepted
         self.scans.append(s)
         return s
 
@@ -64,16 +69,7 @@ class FakeBluez:
         if args[0] == "busctl":
             if not self.busctl:
                 return 127, "busctl is not installed"
-            objs = {"/org/bluez/hci0": {"org.bluez.Adapter1": {
-                "Powered": {"type": "b", "data": True},
-                "Discovering": {"type": "b", "data": self.scanning()}}}}
-            for mac, d in self.dev.items():
-                props = {"Address": {"type": "s", "data": mac}}
-                for k, v in d.items():
-                    props[k] = {"type": "x", "data": v}
-                objs["/org/bluez/hci0/dev_" + mac.replace(":", "_")] = {
-                    "org.bluez.Device1": props}
-            return 0, json.dumps({"type": "a{oa{sa{sv}}}", "data": [objs]})
+            return 0, fake_managed_objects(self.dev, discovering=self.scanning())
         assert args[0] == "bluetoothctl"
         cmd = args[1]
         if cmd == "devices":
@@ -81,7 +77,11 @@ class FakeBluez:
         if cmd == "show":
             return 0, "Controller B8:27:EB:00:00:00 (public)\n\tPowered: yes\n\tDiscovering: no\n"
         if cmd == "power":
-            return 0, "Changing power on succeeded"
+            if args[2] == "off":
+                self.stuck = False
+                for d in self.dev.values():
+                    d["Connected"] = False
+            return 0, "Changing power succeeded"
         mac = args[2]
         d = self.dev.get(mac)
         if cmd == "info":
@@ -109,6 +109,7 @@ class FakeBluez:
             d["Connected"] = True
             return 0, "Connection successful"
         if cmd == "disconnect":
+            self.pending_connect = False
             d["Connected"] = False
             return 0, "Successful disconnected"
         if cmd == "remove":
@@ -118,6 +119,7 @@ class FakeBluez:
 
 
 def manager(bz, **kw):
+    kw.setdefault("hold_file", "")
     return GamepadManager(run=bz.run, spawn_scan=bz.spawn_scan, sleep=lambda s: None,
                           cache_s=0.0, background=False, **kw)
 
@@ -157,12 +159,42 @@ def test_parse_managed_objects():
     assert d[PAD]["paired"] and d[PAD]["trusted"] and d[PAD]["gamepad"]
     assert d[NEW]["rssi"] == -48 and not d[NEW]["paired"]
     assert d["AA:BB:CC:DD:EE:04"]["name"] == ""       # address-as-name is no name
-    for bad in ("", "nope", "{}", '{"data":[]}', '{"data":[5]}'):
+    for bad in ("", "nope", "{}", 'a{sv} 3 "x" b true', "s", "a{oa{sa{sv}}} two", 'as 1 "x"'):
         try:
             parse_managed_objects(bad)
         except ValueError:
             continue
         raise AssertionError(f"accepted {bad!r}")
+
+
+# captured from a real duck (Pi Zero 2 W, BlueZ 5.66): one device's properties
+REAL_PROPS = ('a{sv} 17 "Address" s "C0:D6:D5:E4:A5:71" "AddressType" s "public" "Name" s '
+              '"Xbox Wireless Controller" "Alias" s "Xbox Wireless Controller" "Appearance" q 964 '
+              '"Icon" s "input-gaming" "Paired" b true "Bonded" b true "Trusted" b true '
+              '"Blocked" b false "LegacyPairing" b false "Connected" b false "UUIDs" as 2 '
+              '"00000001-5f60-4c4f-9c83-a7953298d40d" "00001800-0000-1000-8000-00805f9b34fb" '
+              '"Modalias" s "usb:v045Ep0B13d0523" "Adapter" o "/org/bluez/hci0" '
+              '"ManufacturerData" a{qv} 1 6 ay 3 3 0 128 "ServicesResolved" b false\n')
+
+
+def test_parse_busctl_plain_reply_from_a_real_duck():
+    p = parse_busctl_reply(REAL_PROPS)
+    assert len(p) == 17 and p["Paired"] is True and p["Connected"] is False
+    assert p["Appearance"] == 964 and p["ManufacturerData"] == {6: [3, 0, 128]}
+    assert p["UUIDs"][1].startswith("00001800") and p["ServicesResolved"] is False
+
+
+def test_parse_busctl_structs_escapes_and_empty_containers():
+    assert parse_busctl_reply('(sa{sv}as) "a b" 0 0') == ["a b", {}, []]
+    assert parse_busctl_reply('a(sd) 2 "x" 1.5 "y" -2') == [["x", 1.5], ["y", -2.0]]
+    assert parse_busctl_reply(r's "Max\'s \"Pad\" \\ B\303\274ro \360\237\246\206"') == 'Max\'s "Pad" \\ Büro 🦆'
+
+
+def test_odd_names_survive_the_round_trip():
+    devs = {PAD: dict(Name='Jörg\'s "Pad" \\ 🦆', Paired=True, Trusted=True, Connected=True,
+                      Icon="input-gaming")}
+    d = parse_managed_objects(fake_managed_objects(devs))["devices"][0]
+    assert d["name"] == devs[PAD]["Name"] and d["connected"] and d["gamepad"]
 
 
 def test_sorting_puts_usable_pads_first_and_drops_nameless():
@@ -187,7 +219,7 @@ def test_status_without_busctl_falls_back_to_bluetoothctl():
 
 def test_status_when_bluetooth_is_missing():
     m = GamepadManager(run=lambda a, t: (127, f"{a[0]} is not installed"), cache_s=0.0,
-                       background=False)
+                       background=False, hold_file="")
     st = m.status()
     assert st["available"] is False and "not installed" in st["error"] and st["devices"] == []
 
@@ -267,12 +299,70 @@ def test_bad_requests_never_reach_a_command_line():
 
 def test_only_one_action_at_a_time():
     bz = FakeBluez()
-    m = GamepadManager(run=bz.run, spawn_scan=bz.spawn_scan, cache_s=0.0, background=False)
+    m = manager(bz)
     seen = []
     real = m._do_connect
     m._do_connect = lambda mac: (seen.append(m.request("forget", PAD)), real(mac))[1]
     m.request("connect", PAD)
     assert seen == [(False, "busy")] and PAD in bz.dev
+
+
+def test_scan_cancels_a_pending_connect_first():
+    # found on the real duck: the reconnect watchdog is mid-connect nearly all the time
+    # a pad is away, and BlueZ then refuses to search
+    bz = FakeBluez()
+    bz.pending_connect = True
+    m = manager(bz)
+    m.request("scan")
+    assert bz.scanning() and bz.refused_scans == 0 and m.status()["scanning"]
+    assert ["bluetoothctl", "disconnect", PAD] in bz.calls
+
+
+def test_stuck_adapter_is_power_cycled_as_a_last_resort():
+    bz = FakeBluez()
+    bz.stuck = True
+    m = manager(bz)
+    m.request("scan")
+    assert bz.scanning() and m.status()["scanning"]
+    assert ["bluetoothctl", "power", "off"] in bz.calls and bz.refused_scans == 2
+
+
+def test_adapter_is_never_power_cycled_under_a_connected_pad():
+    bz = FakeBluez()
+    bz.stuck = True
+    bz.dev[PAD]["Connected"] = True
+    m = manager(bz)
+    m.request("scan")
+    assert ["bluetoothctl", "power", "off"] not in bz.calls and bz.dev[PAD]["Connected"]
+    assert "busy" in m.status()["message"]
+
+
+def test_scan_that_never_starts_is_reported():
+    bz = FakeBluez()
+    bz.dev[PAD]["Paired"] = False        # nothing to cancel, yet the adapter stays busy
+    bz.dev[PAD]["Connected"] = True      # ... and a live pad forbids the power cycle
+    bz.pending_connect = True
+    m = manager(bz)
+    m.request("scan")
+    st = m.status()
+    assert not st["scanning"] and st["message_ok"] is False and "busy" in st["message"]
+    assert not any(s.alive for s in bz.scans)
+
+
+def test_watchdog_is_held_during_scan_and_released_after():
+    import os, tempfile
+    hold = os.path.join(tempfile.mkdtemp(), "hold")
+    bz = FakeBluez()
+    m = manager(bz, hold_file=hold)
+    m.request("scan")
+    assert os.path.exists(hold)
+    m.request("stop_scan")
+    assert not os.path.exists(hold)
+    m.request("scan")
+    m.request("pair", NEW)
+    assert not os.path.exists(hold) and bz.dev[NEW]["Connected"]
+    m.request("connect", PAD)
+    assert not os.path.exists(hold)
 
 
 def test_stop_scan():
@@ -287,7 +377,7 @@ def test_cache_spares_the_pi():
     bz = FakeBluez()
     t = [100.0]
     m = GamepadManager(run=bz.run, spawn_scan=bz.spawn_scan, clock=lambda: t[0],
-                       cache_s=1.0, background=False)
+                       cache_s=1.0, background=False, hold_file="")
     m.status(); m.status(); m.status()
     assert len(bz.calls) == 1
     t[0] += 1.5
