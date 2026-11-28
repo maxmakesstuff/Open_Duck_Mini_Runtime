@@ -1049,8 +1049,8 @@ function paneHead(s){ const h=s.head_life; if(!h) return "";
     ${toggleRow("head",{k:"voice",name:"Voice joins in",
       help:"Some animations come with a sound: a curious chirp, a happy note, a bit of babble. The duck never talks over itself and pauses between utterances."},h.voice!==false)}
     ${toggleRow("head",{k:"lead",name:"Look where it goes",
-      help:"Steer into a turn or a sidestep and the head looks that way first, then the body follows. Takes the head over from Look around while you steer. Walking straight ahead or stopping is never delayed. <b>Turning gets harder with this on:</b> the feet need good grip (sticky soles, non-slippery floor) or the duck barely turns."},!!h.lead)}
-    <div class="thint">With <b>Look where it goes</b> on, turns need sticky feet. On a slippery floor the duck turns much less.</div>
+      help:"Steer into a turn or a sidestep and the head looks that way first, then the body follows. Takes the head over from Look around while you steer. Walking straight ahead or stopping is never delayed. On the real duck turning got harder with this on; that has been reworked but not re-tested, so for now: the feet need good grip (sticky soles, non-slippery floor)."},!!h.lead)}
+    <div class="thint">With <b>Look where it goes</b> on, turns need sticky feet: on a slippery floor the duck turned much less. (Reworked since; tell us if it still does.)</div>
     ${rows("head",HEAD_CONTROLS,k=>h[k]!=null?h[k]:0)}
     <button class="btn tsave" data-save="head">SAVE HEAD MOTION TO DUCK</button>
     <button class="btn treset" data-reset="head">↺ RESET HEAD MOTION TO DEFAULTS</button>

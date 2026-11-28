@@ -146,6 +146,8 @@ recordings:
     (head pitch, yaw, roll; the neck is never touched) added BEFORE the observation is
     built (`RLWalk._apply_head_life`), `ears` (added to the ear animator's output in
     `_ears_with_animation`; a held trigger wins), `pop_voice()` (a sound category).
+    (As first built the offsets went into `last_commands` before the observation;
+    since the same day they are hidden from the policy, see the next point.)
     Hard caps whatever the settings: pitch 0.45, yaw 0.70, roll 0.40 rad; 4 / 5 / 4
     rad/s (times `speed` above 1). Settings `look`, `look_scale`, `speed`, `busy`,
     `ears`, `voice` (+ `lead`, `lead_s`); config key `head_life`, settings group
@@ -158,6 +160,34 @@ recordings:
     Trained head ranges (Open_Duck_Playground `joystick.py`): neck -0.34..1.1, pitch
     +-0.78, yaw +-1.5, roll +-0.5, drawn at random. Never edit `last_commands` in
     place: the pad hands the same array back on ticks without a fresh sample.
+  - **Head offsets are HIDDEN from the walk policy (2026-11-28, simulation only).**
+    Simulated with both walk policies in MuJoCo, in a loop that copies the robot's
+    head handling (`tools/walk_sim/`, 8 to 12 runs of 20 to 30 s per cell). Findings:
+    - The robot adds the head command to the policy's own head targets, and those
+      targets and the resulting joint positions are in the next observation. The
+      policies never saw their head that far from where they put it. dk5426 walker,
+      forward 0.1 m/s commanded: head straight 0.072 m/s; head turned 0.2 rad 0.031;
+      0.4 rad 0.000 (it stops); tilted up 0.2 rad 0.030; lean and tilt down: no
+      effect. Stock walk: stops for tilt up 0.25 (0.007) and lean 0.28 (0.014), veers
+      at 0.4 rad/s with the head turned.
+    - Turning at 0.8 rad/s commanded: 0.72 reached with the head straight, 0.25 to
+      0.58 with the head 0.45 rad into the turn (dk), 0.15 to 0.41 (stock). That is
+      the user's "turning got much harder" with the sight lead, reproduced; it is the
+      head angle, not the head start.
+    - Animations (as first shipped, policy told): forward speed down 25 % at the
+      defaults, 40 % at maximum. No falls with the head as modelled. With a head
+      1.6 times heavier and stiff (the model in which the removed 10 deg neck bob
+      falls 8 of 8, as it did on the real duck): defaults fall 3 of 10, maximum 8 of 10.
+    - **Hidden** (offset not in the command, the lagged offset subtracted from the
+      observed head positions, the sent offset from the observed head targets): walk
+      speed, turn rate and lean are those of a straight head in every case above; 0
+      falls in every cell, heavy head and maximum settings included. Robust to the
+      assumed head lag from 0 to 0.6 s (`HEAD_LAG_TAU` = 0.12).
+    Implemented in `RLWalk._apply_head_life` / `get_obs` / the head overlay;
+    `head_life` config `hide: false` restores "told". Recordings still store the
+    measured joint positions. NOT yet on a duck. Caveat: the simulation needed the
+    heavier, stiffer head to show the neck-bob fall at all, so it is optimistic about
+    head-induced instability; treat "no falls" as encouraging, not as proof.
   - **Audio system (rebuilt 2026-11-28, tested on the Mac only).** `sounds.py`
     (`Sounds`: effects by file name, voice by category, master volume, never raises;
     mixer injectable for tests) + `duck_voice.py` (`DuckVoice`: picks a take not just

@@ -13,12 +13,23 @@ Head life: context animations that make the duck look alive.
     that way first and the body follows a moment later. It takes the head over
     from the animations for as long as the duck is being steered; the ears go on.
 
-Everything is an OFFSET on the head command the walk policy already receives
-(head_pitch, head_yaw, head_roll; the neck is left alone) plus two ear values. The
-policy was trained with head commands drawn at random over pitch +-0.78, yaw +-1.5,
-roll +-0.5 rad, so a head that is not pointing forward is something it knows how to
-carry. How QUICKLY the head may move before the walk suffers is not known; `speed`
-is a setting for that reason.
+Everything is an OFFSET on the head joints' targets (head_pitch, head_yaw,
+head_roll; the neck is left alone) plus two ear values.
+
+HOW the offsets reach the head matters a great deal (simulated 2026-11-28 with both
+walk policies in MuJoCo, see CLAUDE.md):
+  * If the policy SEES them (in its head command, or just in the head joints'
+    positions and targets it observes), it walks worse: with the head turned 23 deg
+    the dk5426 walker stops walking forward, the stock walk stops for a head tilted
+    up or leaning, both lose most of their turning when the head looks into the
+    turn, and with a heavy head the liveliest settings make it fall.
+  * If they are HIDDEN from it (`hide`, the default: not in the command, and taken
+    out of the head positions and targets it observes), the policy walks, turns and
+    balances exactly as with the head straight, at every speed and size setting,
+    also with a head 60 % heavier and stiff.
+So the walk loop adds the offsets after the policy and subtracts them from the
+observation. `hide: false` in the config restores the old behaviour (offsets in the
+head command).
 
 Directions (checked against the robot model, 2026-11-28): head_pitch + = up,
 head_yaw + = left, head_roll + = leaning left. Ears: + = perked, - = laid back
@@ -49,10 +60,11 @@ DEFAULTS = {
     "voice": True,           # some animations come with a sound
     "lead": False,           # look into a turn before walking into it
     "lead_s": 0.25,          # how long the head goes first before the body turns
+    "hide": True,            # keep the offsets out of what the walk policy observes
 }
 LIMITS = {"look_scale": (0.2, 1.5), "speed": (0.4, 1.6), "busy": (0.3, 2.0),
           "lead_s": (0.0, 0.8)}
-_BOOLS = ("look", "ears", "voice", "lead")
+_BOOLS = ("look", "ears", "voice", "lead", "hide")
 
 # ----------------------------------------------------------------- animations ----
 # One step = (move_s, (hold_min_s, hold_max_s), pitch, yaw, roll, ear_left, ear_right).

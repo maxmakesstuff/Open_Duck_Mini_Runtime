@@ -238,12 +238,15 @@ saved until you press **Save**:
       every second or two); while **standing** it only looks around calmly and reacts
       to something about once a minute. **Ears join in** and **Voice joins in** switch
       the ears and the sounds that go with it. *Liveliness* = how often, *Speed* = how
-      quick the head moves, *Size* = how far. **If the walk gets unsteady, lower Speed
-      first, then Size.** "Try an animation" plays any single one.
+      quick the head moves, *Size* = how far. In simulation the walk is unaffected at
+      every setting; on a real duck this is new, so start at the defaults, and **if
+      the walk gets unsteady, lower Speed first, then Size.** "Try an animation" plays
+      any single one.
     - **Look where it goes**: the head turns into a turn or sidestep first, the body
       follows after the **Head start** (0.25 s by default; set it to 0 if steering
-      feels slow). **With it on, turning is harder for the duck:** the feet need good
-      grip (sticky soles, a floor that is not slippery) or it barely turns.
+      feels slow). On the real duck turning got harder with it on; that was reworked
+      and fixed in simulation but not re-tested, so for now the feet need good grip
+      (sticky soles, a floor that is not slippery).
     - **Voice & sound**: volume, and a board that makes the duck say something in any
       of its moods.
     - **Ear antennas**: the ears' own idle wiggle.

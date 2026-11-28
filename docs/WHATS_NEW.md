@@ -58,8 +58,15 @@ are in [STABILITY_SUITE.md](STABILITY_SUITE.md)):
   code, with sound.
 - **Look where it goes** (same place): steer into a turn or a sidestep and the head
   looks that way first, then the body follows after a short, adjustable head start.
-  It takes the head over from Look around while you steer. Turning is harder for the
-  duck with it on: the feet need good grip.
+  It takes the head over from Look around while you steer. On the real duck turning
+  got harder with it on; the cause was found in simulation and fixed there (see next
+  point), not yet re-tested on a duck. Until then: the feet need good grip.
+- **Head motion no longer disturbs the walk (in simulation).** A walk policy that sees
+  its own head turned or tilted walks and turns much worse: one of our two policies
+  stops walking forward with the head turned 23°. All head animations are now added
+  after the policy and hidden from what it observes. In simulation the duck then
+  walks, turns and balances exactly as with a straight head, at every speed and size
+  setting.
 - **Stick dead zone:** a stick resting slightly off-centre no longer counts as driving.
   Before, it made the duck creep or turn and kept the straight rest pose from engaging.
 - **Fixed: the gamepad could go dead** when it connected just as a mode started. The

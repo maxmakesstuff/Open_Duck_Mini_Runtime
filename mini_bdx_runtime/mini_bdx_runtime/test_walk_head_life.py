@@ -18,7 +18,23 @@ CMD = slice(6, 13)                    # the 7 commands inside the 101 observatio
 
 
 def head_cmd(duck):
+    """The head command the policy was shown (neck, pitch, yaw, roll)."""
     return np.array(duck.policy.obs[-1][CMD][3:7], dtype=float)
+
+
+def head_sent(duck):
+    """Where the head servos were just sent, relative to the stance (neck, pitch, yaw,
+    roll). With a policy output of 0 this is: head command + animation offset."""
+    names = list(duck.hwi.joints)[5:9]
+    w = duck.hwi.io.writes[-1]
+    return np.array([w[duck.hwi.joints[n]] - H.OFFSETS[n] - duck.hwi.init_pos[n] for n in names])
+
+
+def head_seen(duck):
+    """What the policy observes of the head: (joint positions - stance, motor targets - stance)."""
+    obs = np.array(duck.policy.obs[-1], dtype=float)
+    init = np.array(list(duck.hwi.init_pos.values()))[5:9]
+    return obs[13 + 5:13 + 9], obs[-4 - 14 + 5:-4 - 14 + 9] - init
 
 
 def test_off_by_default_the_head_command_is_untouched():
@@ -29,27 +45,42 @@ def test_off_by_default_the_head_command_is_untouched():
     H.run_duck(scenario)
 
 
-def test_look_around_reaches_the_policy_and_the_servos_smoothly():
+def test_animations_move_the_head_servos_but_are_hidden_from_the_policy():
     def scenario(duck, post, state):
+        import random
+        duck.head_life.rng = random.Random(5)              # the same run every time
         yield from H.ticks(5)
         post("/api/setting", {"group": "head", "key": "look", "value": True})
-        seen = []
-        first = len(duck.hwi.io.writes)
+        sent, told, seen_pos, seen_tgt = [], [], [], []
         for _ in range(900):                               # 18 s
             yield
-            seen.append(head_cmd(duck))
-        seen = np.array(seen)
-        assert np.max(np.abs(seen[:, 2])) > 0.1            # the yaw command moves
-        assert not np.any(seen[:, 0])                      # the neck does not
-        assert np.all(seen >= walk.HEAD_CMD_LO - 1e-9) and np.all(seen <= walk.HEAD_CMD_HI + 1e-9)
-        assert np.max(np.abs(np.diff(seen, axis=0))) <= 5.0 * H.DT + 1e-6     # inside the speed cap
-        # what the policy was told is what the head servos were sent (on top of the policy's own head action)
-        ids = [duck.hwi.joints[j] for j in list(duck.hwi.joints)[5:9]]
-        w = duck.hwi.io.writes[first:]
-        yaw = np.array([x[ids[2]] for x in w])
-        assert np.ptp(yaw) > 0.1
-        assert state()["head_life"]["look"] is True
+            sent.append(head_sent(duck)); told.append(head_cmd(duck))
+            a, b = head_seen(duck); seen_pos.append(a); seen_tgt.append(b)
+        sent, told, seen_pos, seen_tgt = map(np.array, (sent, told, seen_pos, seen_tgt))
+        assert np.max(np.abs(sent[:, 2])) > 0.1            # the head really turns
+        assert not np.any(sent[:, 0])                      # the neck does not
+        assert np.all(sent >= walk.HEAD_CMD_LO - 1e-9) and np.all(sent <= walk.HEAD_CMD_HI + 1e-9)
+        assert np.max(np.abs(np.diff(sent, axis=0))) <= 5.0 * H.DT + 1e-6      # inside the speed cap
+        assert not np.any(told)                            # the policy's head command stays zero
+        assert np.max(np.abs(seen_tgt)) < 1e-9             # its "motor targets" show no offset
+        # joint positions: during a move the (instant) fake servo and our lag estimate
+        # differ for a moment; once a look is held nothing of it is visible
+        held = [k for k in range(60, len(sent)) if np.max(np.abs(sent[k] - sent[k - 30])) < 1e-9
+                and np.max(np.abs(sent[k])) > 0.1]
+        assert held and all(np.max(np.abs(seen_pos[k])) < 0.02 for k in held)   # a held look: invisible
+        assert state()["head_life"]["look"] is True and state()["head_life"]["hide"] is True
     H.run_duck(scenario, action=0.0)
+
+
+def test_with_hide_off_the_policy_is_told_as_before():
+    def scenario(duck, post, state):
+        post("/api/setting", {"group": "head", "key": "look", "value": True})
+        yield from H.ticks(50)
+        post("/api/setting", {"group": "head", "key": "play", "value": "look_back"})
+        yield from H.ticks(25)
+        assert np.max(np.abs(head_cmd(duck))) > 0.2        # in the command
+        assert np.allclose(head_sent(duck), head_cmd(duck), atol=1e-6)   # and nothing added on top
+    H.run_duck(scenario, action=0.0, config={"head_life": {"hide": False}})
 
 
 def test_puppeteer_taking_the_head_stops_it():
@@ -58,12 +89,12 @@ def test_puppeteer_taking_the_head_stops_it():
         yield from H.ticks(50)
         post("/api/setting", {"group": "head", "key": "play", "value": "look_back"})
         yield from H.ticks(25)                             # half a second in: head turned away
-        assert np.any(np.abs(head_cmd(duck)) > 0.2)
+        assert np.any(np.abs(head_sent(duck)) > 0.2)
         duck.xbox_controller.head_control_mode = True      # Y pressed
         yield from H.ticks(250)                            # 5 s to glide back
-        assert np.max(np.abs(head_cmd(duck))) < 2e-3
+        assert np.max(np.abs(head_sent(duck))) < 2e-3
         yield from H.ticks(300)
-        assert np.max(np.abs(head_cmd(duck))) < 2e-3       # and it stays off
+        assert np.max(np.abs(head_sent(duck))) < 2e-3      # and it stays off
     H.run_duck(scenario, action=0.0)
 
 
@@ -212,7 +243,7 @@ def test_no_speaker_no_ears_still_animates_the_head():
         moved = 0.0
         for _ in range(600):
             yield
-            moved = max(moved, float(np.max(np.abs(head_cmd(duck)))))
+            moved = max(moved, float(np.max(np.abs(head_sent(duck)))))
         assert moved > 0.2 and state()["sound"] is None
     H.run_duck(scenario, action=0.0)
 
@@ -234,17 +265,18 @@ def test_sight_lead_head_first_then_the_turn_reaches_the_policy():
         post("/api/setting", {"group": "head", "key": "lead", "value": True})
         yield from H.ticks(20)
         steer(duck, turn=0.8, forward=0.1)
-        seen = []
+        seen, yaw = [], []
         for _ in range(100):
             yield
-            seen.append(np.array(duck.policy.obs[-1][CMD], dtype=float))
-        seen = np.array(seen)[2:]                          # the pad's new command needs a tick to arrive
+            seen.append(np.array(duck.policy.obs[-1][CMD], dtype=float)); yaw.append(head_sent(duck)[2])
+        seen, yaw = np.array(seen)[2:], np.array(yaw)[2:]  # the pad's new command needs a tick to arrive
         assert np.all(seen[:, 0] == 0.1)                   # forward speed is never held back
         assert np.all(seen[:10, 2] == 0.0)                 # the turn waits ...
-        assert seen[10, 5] > 0.1                           # ... while the head yaw is already moving
+        assert yaw[10] > 0.1                               # ... while the head is already turning
         assert abs(seen[-1, 2] - 0.8) < 1e-9               # then the full turn goes through
-        assert abs(seen[-1, 5] - 0.8 * 0.45) < 0.01        # head looks into the turn
+        assert abs(yaw[-1] - 0.8 * 0.45) < 0.01            # head looks into the turn
         assert np.all(np.diff(seen[:, 2]) >= -1e-12)
+        assert not np.any(seen[:, 3:7])                    # and the policy is not told about the head
     H.run_duck(scenario, action=0.0)
 
 

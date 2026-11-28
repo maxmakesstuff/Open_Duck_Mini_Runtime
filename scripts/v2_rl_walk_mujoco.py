@@ -90,6 +90,11 @@ HEAD_CMD_HI = np.array([1.1, 0.3, 0.8, 0.5])
 # With the head animations on, the ears' own idle wiggle is turned down to this share
 # and the animation's ear pose is added on top.
 EAR_WANDER_UNDER_ANIM = 0.4
+# The head follows its target with a lag (soft head servos). The share of an animation
+# offset that has "arrived" is tracked with this time constant, to take exactly that
+# much out of the head positions the policy observes. In simulation anything from 0 to
+# 0.6 s works; 0.08 to 0.15 s is best.
+HEAD_LAG_TAU = 0.12
 
 # DPAD-LEFT hold (s) to start a whole-body recording; walk_recording.pkl persists
 # the last take across restarts (handy for events).
@@ -420,6 +425,10 @@ class RLWalk:
         pol_cfg = self.duck_config.policies if isinstance(self.duck_config.policies, dict) else {}
         self.rest_pose = RestPose(enabled=bool(pol_cfg.get("rest_straight", False)))
         self.head_life = HeadLife(getattr(self.duck_config, "head_life", {}))
+        self._head_off = np.zeros(4)        # animation offset on the head targets, this tick
+        self._head_off_sent = np.zeros(4)   # ... the one inside the current motor_targets
+        self._head_lag = np.zeros(4)        # ... as far as the head has followed it
+        self._last_dof_pos = None           # joint positions as measured (not as shown to the policy)
         self.loop_health = LoopHealth(self.control_freq)
         self.blackbox = FlightRecorder(
             self.control_freq, self.duck_config.flight_recorder,
@@ -506,6 +515,9 @@ class RLWalk:
         self.prev_motor_targets = self.motor_targets.copy()
         if getattr(self, "head_life", None) is not None:
             self.head_life.reset()      # the head is at the stance: start from there
+            self._head_off = np.zeros(4)
+            self._head_off_sent = np.zeros(4)
+            self._head_lag = np.zeros(4)
 
     def _say(self, category, now=None, urgent=False):
         """Let the duck say something of that category, if it has a speaker and a
@@ -529,9 +541,14 @@ class RLWalk:
                 float(np.clip(ant_r * k + er, -1.0, 1.0)))
 
     def _apply_head_life(self, now, driving=False):
-        """Add the look-around / sight-lead offsets to this tick's head command. They
-        go in BEFORE the observation is built, so the policy sees the head command it
-        was trained to carry. Off, or not allowed, the offsets glide to zero."""
+        """Work out this tick's head-animation offsets (look-around, sight lead).
+
+        By default they are HIDDEN from the walk policy: they are added to the head
+        targets after the policy has run and taken out of what it observes, so it
+        walks as if the head were straight. In simulation a policy that sees its head
+        turned or tilted walks and turns much worse (see head_life.py). With
+        `hide: false` they go into the head command instead, as before.
+        Off, or not allowed, the offsets glide to zero."""
         allowed = (self._activity is None
                    and not getattr(self.xbox_controller, "head_control_mode", False)
                    and self.recorder.state != "playing")
@@ -544,10 +561,15 @@ class RLWalk:
         if voice:
             self._say(voice, now)           # the voice keeps its own pauses
         hold = float(self.head_life.body_scale)
+        hide = bool(self.head_life.cfg.get("hide", True))
+        cmds = np.array(self.last_commands, dtype=float)    # never edit in place
+        # keep command + offset inside the head's limits
+        total = np.clip(cmds[3:7] + np.array(off), HEAD_CMD_LO, HEAD_CMD_HI)
+        self._head_off = (total - cmds[3:7]) if hide else np.zeros(4)
         if hold >= 1.0 and not any(abs(v) > 1e-6 for v in off):
             return
-        cmds = np.array(self.last_commands, dtype=float)    # never edit in place
-        cmds[3:7] = np.clip(cmds[3:7] + np.array(off), HEAD_CMD_LO, HEAD_CMD_HI)
+        if not hide:
+            cmds[3:7] = total
         if hold < 1.0:
             # Sight lead: the head turns first, the turn and the sidestep follow.
             # Forward and backward speed are never held back.
@@ -1522,6 +1544,17 @@ class RLWalk:
 
         feet_contacts = self.feet_contacts.get()
 
+        # Head animations are hidden from the policy: show it the head where it would
+        # be without them (positions: as far as the head has followed the offset;
+        # targets: the offset that was added to them last tick).
+        self._last_dof_pos = dof_pos
+        targets_seen = self.motor_targets
+        if np.any(self._head_lag) or np.any(self._head_off_sent):
+            dof_pos = np.array(dof_pos, dtype=float)
+            dof_pos[5:9] -= self._head_lag
+            targets_seen = np.array(self.motor_targets, dtype=float)
+            targets_seen[5:9] -= self._head_off_sent
+
         obs = np.concatenate(
             [
                 imu_data["gyro"],
@@ -1532,7 +1565,7 @@ class RLWalk:
                 self.last_action,
                 self.last_last_action,
                 self.last_last_last_action,
-                self.motor_targets,
+                targets_seen,
                 feet_contacts,
                 self.imitation_phase,
             ]
@@ -1870,8 +1903,12 @@ class RLWalk:
 
                 self.prev_motor_targets = self.motor_targets.copy()
 
-                head_motor_targets = self.last_commands[3:] + self.motor_targets[5:9]
+                head_motor_targets = (self.last_commands[3:] + self.motor_targets[5:9]
+                                      + self._head_off)
                 self.motor_targets[5:9] = head_motor_targets
+                self._head_off_sent = self._head_off.copy()
+                self._head_lag += (self._head_off - self._head_lag) * (
+                    1.0 - np.exp(-(1.0 / self.control_freq) / HEAD_LAG_TAU))
 
                 action_dict = make_action_dict(
                     self.motor_targets, list(self.hwi.joints.keys())
@@ -1882,7 +1919,8 @@ class RLWalk:
                 i += 1
 
                 took = time.time() - t
-                self._rec_tick(t, pos=obs[13:27] + self.init_pos, vel=obs[27:41] / 0.05,
+                self._rec_tick(t, pos=(self._last_dof_pos if self._last_dof_pos is not None
+                                       else obs[13:27] + self.init_pos), vel=obs[27:41] / 0.05,
                                action=action, took=took)
                 self._note_control_tick()
                 # a stretch of plain walking earns the automatic get-up its tries back
