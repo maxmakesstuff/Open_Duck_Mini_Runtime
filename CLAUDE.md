@@ -152,6 +152,10 @@ recordings:
     speed and stops are never delayed. Sign convention assumed from the pad code
     (stick left = positive turn, positive sidestep, positive head yaw); confirm on the
     duck that the head looks INTO the turn.
+    On the MAX duck (2026-11-28): looks good and the direction is right, but the duck
+    turns much worse with it. The user's reading: the policy uses the head to help the
+    turn. Kept in on the user's decision, with a note in the UI that the feet need
+    grip. Not investigated; a smaller lead yaw would be the first thing to try.
   - **Head bob in step with the gait: tried, failed, removed.** Neck pitch nodding twice
     per gait cycle (0.54 s cycle, so about 3.7 Hz) off the gait clock. On the duck it
     visibly upset the walk; the one recorded walk at 10 deg fell after 8 s. The policy

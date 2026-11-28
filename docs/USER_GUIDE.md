@@ -235,7 +235,9 @@ saved until you press **Save**:
   - **Animation** — the ear wiggle, and **Head while walking**: *Look around* (slow
     random glances, size adjustable) and *Look where it goes* (the head turns into a
     turn or sidestep first, the body follows after the **Head start**, 0.25 s by
-    default; set it to 0 if steering feels slow). Neither runs while you steer the
+    default; set it to 0 if steering feels slow). **With it on, turning is harder for
+    the duck:** the feet need good grip (sticky soles, a floor that is not slippery) or
+    it barely turns. Neither runs while you steer the
     head with **Y**, during playback of a recording, or in a fall or get-up.
   - **Walk** — action scale, gait offset and **steering trim** (all kept per policy),
     joint speed limit, stick ramp, the stability governor, and the **IMU trim** card.

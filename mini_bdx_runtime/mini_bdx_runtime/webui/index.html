@@ -1037,7 +1037,8 @@ function paneHead(s){ const h=s.head_life; if(!h) return "";
     ${toggleRow("head",{k:"look",name:"Look around",
       help:"The head drifts to a new glance direction every few seconds and comes back. Slow and smooth. Pauses by itself while you steer the head with <b>Y</b>."},!!h.look)}
     ${toggleRow("head",{k:"lead",name:"Look where it goes",
-      help:"Steer into a turn or a sidestep and the head looks that way first, then the body follows. Takes the head over from Look around while you steer. Walking straight ahead or stopping is never delayed."},!!h.lead)}
+      help:"Steer into a turn or a sidestep and the head looks that way first, then the body follows. Takes the head over from Look around while you steer. Walking straight ahead or stopping is never delayed. <b>Turning gets harder with this on:</b> the feet need good grip (sticky soles, non-slippery floor) or the duck barely turns."},!!h.lead)}
+    <div class="thint">With <b>Look where it goes</b> on, turns need sticky feet. On a slippery floor the duck turns much less.</div>
     ${rows("head",HEAD_CONTROLS,k=>h[k]!=null?h[k]:0)}
     <button class="btn tsave" data-save="head">SAVE HEAD MOTION TO DUCK</button>
     <button class="btn treset" data-reset="head">↺ RESET HEAD MOTION TO DEFAULTS</button></div>`; }

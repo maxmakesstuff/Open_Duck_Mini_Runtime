@@ -42,7 +42,8 @@ are in [STABILITY_SUITE.md](STABILITY_SUITE.md)):
   upset the walk.)
 - **Look where it goes** (same place): steer into a turn or a sidestep and the head
   looks that way first, then the body follows after a short, adjustable head start.
-  It takes the head over from Look around while you steer.
+  It takes the head over from Look around while you steer. Turning is harder for the
+  duck with it on: the feet need good grip.
 - **Stick dead zone:** a stick resting slightly off-centre no longer counts as driving.
   Before, it made the duck creep or turn and kept the straight rest pose from engaging.
 - **Fixed: the gamepad could go dead** when it connected just as a mode started. The
