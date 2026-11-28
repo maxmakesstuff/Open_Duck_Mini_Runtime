@@ -129,6 +129,8 @@ class DuckConfig:
         self.getup = self.json_config.get("getup", {})
         # Head life: look around / head bob while walking (head_life.py). Missing -> off.
         self.head_life = self.json_config.get("head_life", {})
+        # Master volume 0..1 for everything the speaker plays (sounds.py).
+        self.sound_volume = self.json_config.get("sound_volume", 1.0)
         # Black-box recorder (flight_recorder.py). Missing -> on.
         self.flight_recorder = self.json_config.get("flight_recorder", {})
         # Drive-command ramp (command_shaper.py). Missing -> off.

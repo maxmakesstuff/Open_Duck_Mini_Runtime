@@ -83,9 +83,13 @@ ACTION_SCALE_RAMP = 0.02
 REST_FADE_RAMP = 0.004
 STEER_TRIM_LIMIT = 0.5
 # Head command limits [neck_pitch, head_pitch, head_yaw, head_roll] (rad): the gamepad's
-# own ranges, all inside what the walk policies were trained with.
-HEAD_CMD_LO = np.array([-0.34, -0.78, -0.5, -0.5])
-HEAD_CMD_HI = np.array([1.1, 0.3, 0.5, 0.5])
+# own ranges, with the yaw widened for the head animations; all inside what the walk
+# policies were trained with (yaw +-1.5).
+HEAD_CMD_LO = np.array([-0.34, -0.78, -0.8, -0.5])
+HEAD_CMD_HI = np.array([1.1, 0.3, 0.8, 0.5])
+# With the head animations on, the ears' own idle wiggle is turned down to this share
+# and the animation's ear pose is added on top.
+EAR_WANDER_UNDER_ANIM = 0.4
 
 # DPAD-LEFT hold (s) to start a whole-body recording; walk_recording.pkl persists
 # the last take across restarts (handy for events).
@@ -293,7 +297,8 @@ class RLWalk:
             self.projector = Projector()
         if self.duck_config.speaker:
             self.sounds = Sounds(
-                volume=1.0, sound_directory="../mini_bdx_runtime/assets/"
+                volume=getattr(self.duck_config, "sound_volume", 1.0),
+                sound_directory="../mini_bdx_runtime/assets/"
             )
         if self.duck_config.antennas:
             self.antennas = Antennas()
@@ -502,7 +507,28 @@ class RLWalk:
         if getattr(self, "head_life", None) is not None:
             self.head_life.reset()      # the head is at the stance: start from there
 
-    def _apply_head_life(self, now):
+    def _say(self, category, now=None, urgent=False):
+        """Let the duck say something of that category, if it has a speaker and a
+        voice. Never raises. Returns the clip name or None."""
+        if not self.duck_config.speaker or getattr(self, "sounds", None) is None:
+            return None
+        try:
+            return self.sounds.say(category, now, urgent=urgent)
+        except Exception:  # noqa: BLE001 - a sound must never stop the duck
+            return None
+
+    def _ears_with_animation(self, ant_l, ant_r, manual):
+        """The ear values to send: the animator's (hand control or idle wiggle), and
+        on top the pose the running head animation wants for the ears. Hand control
+        (the triggers) always wins."""
+        el, er = self.head_life.ears
+        if manual or (abs(el) < 1e-3 and abs(er) < 1e-3 and not self.head_life.anim):
+            return ant_l, ant_r
+        k = EAR_WANDER_UNDER_ANIM
+        return (float(np.clip(ant_l * k + el, -1.0, 1.0)),
+                float(np.clip(ant_r * k + er, -1.0, 1.0)))
+
+    def _apply_head_life(self, now, driving=False):
         """Add the look-around / sight-lead offsets to this tick's head command. They
         go in BEFORE the observation is built, so the policy sees the head command it
         was trained to carry. Off, or not allowed, the offsets glide to zero."""
@@ -512,7 +538,11 @@ class RLWalk:
         dt = self._tick_dt if 0.0 < self._tick_dt < 0.2 else 1.0 / self.control_freq
         off = self.head_life.update(now, dt, allowed=allowed,
                                     turn=float(self.last_commands[2]),
-                                    side=float(self.last_commands[1]))
+                                    side=float(self.last_commands[1]),
+                                    walking=bool(driving))
+        voice = self.head_life.pop_voice()
+        if voice:
+            self._say(voice, now)           # the voice keeps its own pauses
         hold = float(self.head_life.body_scale)
         if hold >= 1.0 and not any(abs(v) > 1e-6 for v in off):
             return
@@ -683,7 +713,7 @@ class RLWalk:
             self.paused = True
             self.fall_detector.fallen = True
             self._notify("Down. Stand the duck up and press A, or use GET UP.", 30.0)
-            if self.duck_config.speaker:
+            if self._say("worried", urgent=True) is None and self.duck_config.speaker:
                 try:
                     self.sounds.play("beep2.wav")
                 except Exception:  # noqa: BLE001
@@ -857,6 +887,7 @@ class RLWalk:
             self._balance_until = now + self.getup_cfg["balance_s"]
             self._walk_since = now
             self._notify("Standing. Balancing.")
+            self._say("happy", now, urgent=True)
         elif ctl.phase == "failed":
             auto = self.getup_cfg["auto"]
             if (auto and self._lying()
@@ -992,7 +1023,21 @@ class RLWalk:
 
         head = settings.get("head") or {}
         if head:
+            if "play" in head:              # try one animation by name
+                self.head_life.play(str(head.pop("play")))
             self.head_life.set(head)
+        snd = settings.get("sound") or {}
+        sounds = getattr(self, "sounds", None) if self.duck_config.speaker else None
+        if sounds is not None:
+            if "volume" in snd:
+                sounds.set_volume(snd["volume"])
+            if "say" in snd:
+                sounds.say(str(snd["say"]), now, urgent=True)
+            if "sound" in resets:
+                sounds.set_volume(1.0)
+            if "sound" in saves:
+                self._save_async({"sound_volume": round(float(sounds.volume), 2)})
+                self._notify("Volume saved.")
         if "head" in resets:
             self.head_life.cfg = head_life_mod.clean_config({})
             self._notify("Head motion reset to defaults (Save to keep).")
@@ -1023,6 +1068,8 @@ class RLWalk:
             "activity": self._mode_name(),
             "soft": bool(self._soft),
             "head_life": self.head_life.public(),
+            "sound": (self.sounds.public() if self.duck_config.speaker
+                      and getattr(self, "sounds", None) is not None else None),
             "tilt_deg": round(float(self.tilt.tilt_deg), 1),
             "policy": self.policy_manager.status(),
             "safety": self.reflex.public(),
@@ -1524,6 +1571,7 @@ class RLWalk:
         try:
             print("Starting")
             start_t = time.time()
+            self._say("hello", start_t, urgent=True)
             self._start_t = start_t
             self._last_tick_t = None
             self.fall_detector.reset(start_t)
@@ -1594,14 +1642,12 @@ class RLWalk:
                     if trim_mode and self.buttons.B.triggered:
                         self._start_getup(t)        # RB + B = get up
                     elif self.buttons.B.triggered:
-                        if (self.duck_config.speaker and self.sounds.ok
-                                and self.sounds.sounds):
-                            # Pick the sound HERE (not inside play_random_sound)
-                            # so a recording can capture which one played and
-                            # playback repeats it at the same tick.
-                            name = random.choice(list(self.sounds.sounds.keys()))
-                            self.sounds.play(name)
-                            self.recorder.record_sound(name)
+                        if self.duck_config.speaker and self.sounds.ok:
+                            # The name of what played goes into a running
+                            # recording, so playback repeats exactly that clip.
+                            name = self.sounds.play_random(t)
+                            if name:
+                                self.recorder.record_sound(name)
 
                     if self.duck_config.antennas:
                         # Manual trigger input (cross-wired as before) overrides; when
@@ -1609,6 +1655,9 @@ class RLWalk:
                         ant_l, ant_r = self.antenna_anim.update(
                             t, manual_left=right_trigger, manual_right=left_trigger
                         )
+                        ant_l, ant_r = self._ears_with_animation(
+                            ant_l, ant_r,
+                            manual=max(abs(left_trigger), abs(right_trigger)) > 0.05)
                         self.antennas.set_position_left(ant_l)
                         self.antennas.set_position_right(ant_r)
 
@@ -1702,7 +1751,7 @@ class RLWalk:
                     print("⚠ FALL DETECTED — auto-paused. Right the duck, then "
                           "press A (or web Resume) to continue.")
                     self.blackbox.mark("fall", f"tilt {self.tilt.tilt_deg:.0f}")
-                    if self.duck_config.speaker:
+                    if self._say("worried", urgent=True) is None and self.duck_config.speaker:
                         try:
                             self.sounds.play("beep2.wav")
                         except Exception:  # noqa: BLE001
@@ -1758,7 +1807,7 @@ class RLWalk:
                     self._end_tick(t)
                     continue
 
-                self._apply_head_life(t)
+                self._apply_head_life(t, driving)
 
                 obs = self.get_obs(self._last_imu)
                 if obs is None:

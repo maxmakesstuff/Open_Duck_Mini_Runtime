@@ -232,13 +232,23 @@ saved until you press **Save**:
     moment you touch a stick or nudge the duck. If it never eases into the stance, a
     stick is resting far off-centre: switch the pad off and on again **without
     touching the sticks** (the pad takes their position at power-on as the centre).
-  - **Animation** — the ear wiggle, and **Head while walking**: *Look around* (slow
-    random glances, size adjustable) and *Look where it goes* (the head turns into a
-    turn or sidestep first, the body follows after the **Head start**, 0.25 s by
-    default; set it to 0 if steering feels slow). **With it on, turning is harder for
-    the duck:** the feet need good grip (sticky soles, a floor that is not slippery) or
-    it barely turns. Neither runs while you steer the
-    head with **Y**, during playback of a recording, or in a fall or get-up.
+  - **Animation** — everything that makes the duck look alive.
+    - **Look around**: while **walking** the duck is busy and curious (quick glances,
+      head tilts, double takes, nods, sniffing the ground: 21 animations, a new one
+      every second or two); while **standing** it only looks around calmly and reacts
+      to something about once a minute. **Ears join in** and **Voice joins in** switch
+      the ears and the sounds that go with it. *Liveliness* = how often, *Speed* = how
+      quick the head moves, *Size* = how far. **If the walk gets unsteady, lower Speed
+      first, then Size.** "Try an animation" plays any single one.
+    - **Look where it goes**: the head turns into a turn or sidestep first, the body
+      follows after the **Head start** (0.25 s by default; set it to 0 if steering
+      feels slow). **With it on, turning is harder for the duck:** the feet need good
+      grip (sticky soles, a floor that is not slippery) or it barely turns.
+    - **Voice & sound**: volume, and a board that makes the duck say something in any
+      of its moods.
+    - **Ear antennas**: the ears' own idle wiggle.
+    Nothing here runs while you steer the head with **Y**, during playback of a
+    recording, or in a fall or get-up; a held trigger always gives you the ears.
   - **Walk** — action scale, gait offset and **steering trim** (all kept per policy),
     joint speed limit, stick ramp, the stability governor, and the **IMU trim** card.
     Steering trim: if the duck curves with only the forward stick, move it until it

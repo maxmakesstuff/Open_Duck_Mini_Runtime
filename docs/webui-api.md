@@ -94,6 +94,21 @@ Their settings, all over `POST /api/setting` (same "queued, not applied" rule as
 `{"group":"safety","action":"reset"}` and `{"group":"getup","action":"reset"}` restore the
 defaults live (not saved until Save).
 
+### Animation and sound, over `POST /api/setting` (walk mode)
+
+| group | key | value |
+|---|---|---|
+| `head` | `look`, `ears`, `voice`, `lead` | bool |
+| `head` | `busy` (0.3–2), `speed` (0.4–1.6), `look_scale` (0.2–1.5), `lead_s` (0–0.8 s) | number |
+| `head` | `play` | name of one animation (see `head_life.animations` in the state) |
+| `sound` | `volume` | 0–1 |
+| `sound` | `say` | a voice category (see `sound.categories`), or `*` for anything |
+
+`{"group":"head","action":"save"}` / `"reset"` and `{"group":"sound","action":"save"}`
+persist or reset them. State: `head_life` = the settings plus `anim` (running animation,
+`""` between two), `animations` (all names) and `active`; `sound` = `{ok, volume, voice,
+categories, last}` or `null` without a speaker.
+
 ### `GET /api/logs`  → `{"logs":[{"name":"…_fall.npz","bytes":148220,"mtime":…}]}`
 Black-box recordings in `~/duck_logs`, newest first. `GET /api/logs/<name>` downloads one.
 Only plain `.npz` names inside that folder are served.

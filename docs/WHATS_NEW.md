@@ -35,11 +35,27 @@ are in [STABILITY_SUITE.md](STABILITY_SUITE.md)):
   about ten attempts on our duck so far. Needs evenly wired legs, a charged battery and
   joints that nothing holds back. GET UP is offered while the duck is paused or has
   fallen, and a failed attempt names the joint that got stuck.
-- **Look around** (TUNE → Animation, walk mode): the head drifts to a new glance
-  direction every few seconds while the duck walks or stands, slowly and smoothly. It
-  pauses by itself while you steer the head with Y. The Ears tab is now called
-  Animation and holds it. (A head bob in step with the gait was tried and removed: it
-  upset the walk.)
+- **The duck comes alive while it walks** (TUNE → Animation → Look around). Not a slow
+  scan: it looks the way a bird does, with a quick turn, a moment of looking, another
+  quick turn, and it leans its head. 21 animations: glances, a look over the shoulder,
+  curious head tilts, double takes, noticing something, nods, a happy wiggle, sniffing
+  the ground, listening, ear flicks and more. **Walking** it is busy, something new
+  every second or two. **Standing** it only looks around calmly and reacts to
+  something very seldom. The **ears join in** (they perk when it discovers something)
+  and so does the **voice**. Sliders for liveliness, speed and size, and a board to
+  try every animation by hand. (A head bob in step with the gait was tried and
+  removed: it upset the walk.)
+- **A voice.** The duck has its own droid language now: 55 phrases in 13 moods
+  (curious, happy, excited, hello, yes, no, sad, worried, amazed, babble and more),
+  made with the droid-voice synthesizer and shipped as files in `assets/voice`. It
+  says hello when it starts, sounds worried when it falls, happy when it is back up,
+  and talks along with its animations. B on the gamepad says something at random. It
+  never talks over itself. Volume slider and a "say something" board in TUNE →
+  Animation. The whole sound code was rebuilt around this (`sounds.py`,
+  `duck_voice.py`); your own WAVs in `assets/` still work as before.
+- **See it on your computer first:** `python3 webui/mock_server.py`, then open
+  `http://localhost:8080/preview`: a drawn duck head driven by the real animation
+  code, with sound.
 - **Look where it goes** (same place): steer into a turn or a sidestep and the head
   looks that way first, then the body follows after a short, adjustable head start.
   It takes the head over from Look around while you steer. Turning is harder for the

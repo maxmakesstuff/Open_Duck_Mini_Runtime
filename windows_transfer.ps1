@@ -75,6 +75,8 @@ $Files = @(
   'mini_bdx_runtime/mini_bdx_runtime/imu_sanity.py',
   'mini_bdx_runtime/mini_bdx_runtime/rest_pose.py',
   'mini_bdx_runtime/mini_bdx_runtime/head_life.py',
+  'mini_bdx_runtime/mini_bdx_runtime/duck_voice.py',
+  'mini_bdx_runtime/mini_bdx_runtime/sounds.py',
   'mini_bdx_runtime/mini_bdx_runtime/gamepad_pairing.py',
   # --- selectable policies (ONNX + description; see policies/README.md) ---
   'policies/README.md',
@@ -89,6 +91,7 @@ $Files = @(
   'mini_bdx_runtime/mini_bdx_runtime/webui/index.html',
   'mini_bdx_runtime/mini_bdx_runtime/webui/offsets.html',
   'mini_bdx_runtime/mini_bdx_runtime/webui/mock_server.py',
+  'mini_bdx_runtime/mini_bdx_runtime/webui/preview.html',
   # --- scanner sounds ---
   'mini_bdx_runtime/assets/scanner/lamp.wav',
   'mini_bdx_runtime/assets/scanner/lamp2.wav',
@@ -116,6 +119,11 @@ $Files = @(
 
 # This script lives in the repo root; work from there regardless of where it's launched.
 Set-Location -LiteralPath $PSScriptRoot
+
+# The voice library: every take in assets/voice plus voice.json, the list the
+# runtime reads (made by tools/render_voice_library.py).
+$Files += Get-ChildItem -LiteralPath 'mini_bdx_runtime/assets/voice' -File |
+  ForEach-Object { 'mini_bdx_runtime/assets/voice/' + $_.Name }
 
 # Ask which duck to deploy to (Enter = default). Custom input is "user@host".
 $default = "$RemoteUser@$RemoteHost"

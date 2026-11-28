@@ -268,6 +268,8 @@ input[type=range]::-moz-range-thumb{width:22px; height:22px; border:none; border
          background:rgba(16,14,10,.6); padding:2px 7px; border-radius:6px}
 .camstat.err{color:var(--alarm)}
 .thint{font-size:10.5px; color:var(--dim); line-height:1.45; margin-top:2px}
+.board{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px}
+.board .bbtn{flex:1 1 30%; min-width:92px; min-height:40px; padding:6px 8px; font-size:11px; letter-spacing:.04em; text-transform:none}
 /* tappable per-control help (ⓘ) */
 .tap{cursor:pointer}
 .ic{font-style:normal; text-transform:none; font-size:10px; color:var(--dim); border:1px solid var(--line);
@@ -1027,21 +1029,46 @@ function paneHealth(s){
       <div class="volts" id="voltList"><div class="thint" style="grid-column:1/-1">Pause the duck to read the voltages.</div></div></div>`;
 }
 const HEAD_CONTROLS=[
-  {k:"look_scale",name:"Glance size",min:0.2,max:1.5,step:0.1,
-   help:"1 = glances up to about 25° to either side. Smaller = subtler."},
+  {k:"busy",name:"Liveliness",min:0.3,max:2,step:0.1,
+   help:"How often something happens. 1 = while walking a new animation every second or two, while standing a calm glance every few seconds and a reaction about once a minute."},
+  {k:"speed",name:"Speed",min:0.4,max:1.6,step:0.1,
+   help:"How quick the head moves. 1 = a glance takes about a quarter of a second. <b>If the walk gets unsteady, lower this first.</b>"},
+  {k:"look_scale",name:"Size",min:0.2,max:1.5,step:0.1,
+   help:"How far the head turns, nods and leans. 1 = glances of about 25°, a look over the shoulder about 35°, leans up to 16°."},
   {k:"lead_s",name:"Head start",min:0,max:0.8,step:0.05,unit:"s",
    help:"With <b>Look where it goes</b> on: how long the head turns before the body follows. 0 = head and body turn together. Longer looks more deliberate but makes steering feel slower."},
 ];
+const nice=n=>String(n).replace(/_/g," ");
 function paneHead(s){ const h=s.head_life; if(!h) return "";
-  return `<div class="tsec"><span class="lbl">Head while walking</span>
+  const snd=s.sound, anims=h.animations||[];
+  let html=`<div class="tsec"><span class="lbl">Head while walking</span>
     ${toggleRow("head",{k:"look",name:"Look around",
-      help:"The head drifts to a new glance direction every few seconds and comes back. Slow and smooth. Pauses by itself while you steer the head with <b>Y</b>."},!!h.look)}
+      help:"Brings the duck to life. <b>Walking:</b> busy and curious: quick glances, head tilts, double takes, nods, sniffing the ground. <b>Standing:</b> it only looks around calmly and reacts to something very seldom. Pauses by itself while you steer the head with <b>Y</b>."},!!h.look)}
+    ${toggleRow("head",{k:"ears",name:"Ears join in",
+      help:"The ears move with the head: they perk when the duck notices something, lie back when it is shy, flick on their own. Holding a trigger always gives you the ears back."},h.ears!==false)}
+    ${toggleRow("head",{k:"voice",name:"Voice joins in",
+      help:"Some animations come with a sound: a curious chirp, a happy note, a bit of babble. The duck never talks over itself and pauses between utterances."},h.voice!==false)}
     ${toggleRow("head",{k:"lead",name:"Look where it goes",
       help:"Steer into a turn or a sidestep and the head looks that way first, then the body follows. Takes the head over from Look around while you steer. Walking straight ahead or stopping is never delayed. <b>Turning gets harder with this on:</b> the feet need good grip (sticky soles, non-slippery floor) or the duck barely turns."},!!h.lead)}
     <div class="thint">With <b>Look where it goes</b> on, turns need sticky feet. On a slippery floor the duck turns much less.</div>
     ${rows("head",HEAD_CONTROLS,k=>h[k]!=null?h[k]:0)}
     <button class="btn tsave" data-save="head">SAVE HEAD MOTION TO DUCK</button>
-    <button class="btn treset" data-reset="head">↺ RESET HEAD MOTION TO DEFAULTS</button></div>`; }
+    <button class="btn treset" data-reset="head">↺ RESET HEAD MOTION TO DEFAULTS</button>
+    <details class="more"><summary>Try an animation (${anims.length})</summary>
+      <div class="thint" id="headNow">Needs <b>Look around</b> on and the duck un-paused.</div>
+      <div class="board">${anims.map(a=>`<button class="btn bbtn" data-play="${esc(a)}">${esc(nice(a))}</button>`).join("")}</div>
+    </details></div>`;
+  if(snd){
+    html+=`<div class="tsec"><span class="lbl">Voice &amp; sound</span>
+      ${rows("sound",[{k:"volume",name:"Volume",min:0,max:1,step:0.05,
+        help:"For the voice and the beeps. The scanner hum keeps its own level."}],k=>snd.volume!=null?snd.volume:1)}
+      <button class="btn tsave" data-save="sound">SAVE VOLUME TO DUCK</button>
+      ${snd.voice?`<details class="more" open><summary>Say something (${(snd.categories||[]).length} moods)</summary>
+        <div class="board">${(snd.categories||[]).map(c=>`<button class="btn bbtn" data-say="${esc(c)}">${esc(nice(c))}</button>`).join("")}</div>
+      </details>`:`<div class="thint">No voice library on this duck (assets/voice is empty): it plays its beeps only.</div>`}
+    </div>`;
+  }
+  return html; }
 function paneEars(s){ const on=!!s.antenna_anim, sync=!!s.antenna_sync;
   if(((s.features||{}).antennas)===false) return paneHead(s);
   return paneHead(s)+`<div class="tsec"><span class="lbl">Ear antennas</span>
@@ -1160,6 +1187,10 @@ function wireTune(){
       b.parentElement.querySelectorAll('[data-opt]').forEach(x=>{ const on=x===b; x.classList.toggle("on",on);
         const tag=x.querySelector(".tag"); if(tag) tag.textContent=on?"SELECTED":""; }); });
   });
+  body.querySelectorAll('[data-play]').forEach(b=>{
+    b.addEventListener('click',()=>{ post("/api/setting",{group:"head",key:"play",value:b.dataset.play}); buzz(10); }); });
+  body.querySelectorAll('[data-say]').forEach(b=>{
+    b.addEventListener('click',()=>{ post("/api/setting",{group:"sound",key:"say",value:b.dataset.say}); buzz(10); }); });
   body.querySelectorAll('[data-save]').forEach(b=>{
     b.addEventListener('click',()=>{ post("/api/setting",{group:b.dataset.save,action:"save"}); buzz(20); flash(b,"SAVED ✓"); });
   });
@@ -1285,6 +1316,8 @@ const REST_HINT={own:"The policy keeps balancing in its own pose while you are n
   straight:"After about 1.5 s without stick input the duck eases into the plain, even stance. Touch a stick or nudge the duck and the policy is back within a quarter of a second."};
 function updateTuneLive(s){
   if(!tuneOpen) return;
+  if($("headNow")){ const h=s.head_life||{};
+    setTxt("headNow", !h.look?"Needs Look around on and the duck un-paused.":(h.anim?"Now: "+nice(h.anim):"Now: looking straight ahead"),"thint"); }
   const rest=s.rest||{};
   if($("restHint")) setTxt("restHint",REST_HINT[rest.enabled?"straight":"own"]+(rest.resting?" Resting now.":""),"thint");
   // a policy swap changes the stride values: rebuild the Walk pane once to show them

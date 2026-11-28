@@ -1,0 +1,472 @@
+{
+ "rate": 22050,
+ "source": "droid-voice moods (see tools/render_voice_library.py)",
+ "categories": {
+  "curious": [
+   {
+    "file": "curious_1.wav",
+    "s": 1.74,
+    "mood": "curious",
+    "energy": 0.45,
+    "seed": 1,
+    "sha256": "88f1c06c8cf2a56f"
+   },
+   {
+    "file": "curious_2.wav",
+    "s": 1.71,
+    "mood": "curious",
+    "energy": 0.55,
+    "seed": 2,
+    "sha256": "bc247e59e6ec53e4"
+   },
+   {
+    "file": "curious_3.wav",
+    "s": 1.43,
+    "mood": "curious",
+    "energy": 0.65,
+    "seed": 3,
+    "sha256": "7a310a6e252f2940"
+   },
+   {
+    "file": "curious_4.wav",
+    "s": 1.88,
+    "mood": "curious",
+    "energy": 0.5,
+    "seed": 4,
+    "sha256": "c26534207aeb9162"
+   },
+   {
+    "file": "curious_5.wav",
+    "s": 1.72,
+    "mood": "curious",
+    "energy": 0.7,
+    "seed": 5,
+    "sha256": "87c7505c04259768"
+   },
+   {
+    "file": "curious_6.wav",
+    "s": 1.84,
+    "mood": "curious",
+    "energy": 0.4,
+    "seed": 6,
+    "sha256": "bd4fe937ac5ee275"
+   }
+  ],
+  "notice": [
+   {
+    "file": "notice_1.wav",
+    "s": 0.55,
+    "mood": "alert",
+    "energy": 0.4,
+    "seed": 1,
+    "sha256": "f362499dcd305713"
+   },
+   {
+    "file": "notice_2.wav",
+    "s": 0.74,
+    "mood": "alert",
+    "energy": 0.5,
+    "seed": 2,
+    "sha256": "904f650a8a443899"
+   },
+   {
+    "file": "notice_3.wav",
+    "s": 0.53,
+    "mood": "alert",
+    "energy": 0.6,
+    "seed": 3,
+    "sha256": "26fcc56fdab457aa"
+   },
+   {
+    "file": "notice_4.wav",
+    "s": 0.54,
+    "mood": "alert",
+    "energy": 0.45,
+    "seed": 4,
+    "sha256": "7324cc3d548b4637"
+   },
+   {
+    "file": "notice_5.wav",
+    "s": 0.52,
+    "mood": "alert",
+    "energy": 0.55,
+    "seed": 5,
+    "sha256": "de6f3ed07c431262"
+   }
+  ],
+  "happy": [
+   {
+    "file": "happy_1.wav",
+    "s": 1.65,
+    "mood": "happy",
+    "energy": 0.5,
+    "seed": 1,
+    "sha256": "b47078fae6744a7c"
+   },
+   {
+    "file": "happy_2.wav",
+    "s": 1.47,
+    "mood": "happy",
+    "energy": 0.6,
+    "seed": 2,
+    "sha256": "d57f2c1f2b093174"
+   },
+   {
+    "file": "happy_3.wav",
+    "s": 2.33,
+    "mood": "happy",
+    "energy": 0.7,
+    "seed": 3,
+    "sha256": "66de364c1709a853"
+   },
+   {
+    "file": "happy_4.wav",
+    "s": 1.76,
+    "mood": "happy",
+    "energy": 0.55,
+    "seed": 4,
+    "sha256": "f96158d7b51a5917"
+   },
+   {
+    "file": "happy_5.wav",
+    "s": 1.62,
+    "mood": "happy",
+    "energy": 0.65,
+    "seed": 5,
+    "sha256": "f8ccc84a1d595abd"
+   },
+   {
+    "file": "happy_6.wav",
+    "s": 1.85,
+    "mood": "happy",
+    "energy": 0.45,
+    "seed": 6,
+    "sha256": "451b375292cb3396"
+   }
+  ],
+  "excited": [
+   {
+    "file": "excited_1.wav",
+    "s": 2.75,
+    "mood": "excited",
+    "energy": 0.6,
+    "seed": 1,
+    "sha256": "60d27d13fa30dbae"
+   },
+   {
+    "file": "excited_2.wav",
+    "s": 3.43,
+    "mood": "excited",
+    "energy": 0.7,
+    "seed": 2,
+    "sha256": "a2d5db256095734f"
+   },
+   {
+    "file": "excited_3.wav",
+    "s": 2.84,
+    "mood": "excited",
+    "energy": 0.8,
+    "seed": 3,
+    "sha256": "7834d0de47f9055e"
+   },
+   {
+    "file": "excited_4.wav",
+    "s": 3.01,
+    "mood": "excited",
+    "energy": 0.65,
+    "seed": 4,
+    "sha256": "b741e7b773d769bb"
+   }
+  ],
+  "hello": [
+   {
+    "file": "hello_1.wav",
+    "s": 1.82,
+    "mood": "hello",
+    "energy": 0.5,
+    "seed": 1,
+    "sha256": "1260e06d6b9c23cd"
+   },
+   {
+    "file": "hello_2.wav",
+    "s": 1.84,
+    "mood": "hello",
+    "energy": 0.6,
+    "seed": 2,
+    "sha256": "6b12c88485aec487"
+   },
+   {
+    "file": "hello_3.wav",
+    "s": 2.27,
+    "mood": "hello",
+    "energy": 0.55,
+    "seed": 3,
+    "sha256": "064caa3b74dff38c"
+   },
+   {
+    "file": "hello_4.wav",
+    "s": 1.94,
+    "mood": "hello",
+    "energy": 0.65,
+    "seed": 4,
+    "sha256": "4c44c2aa6b63bda5"
+   }
+  ],
+  "yes": [
+   {
+    "file": "yes_1.wav",
+    "s": 0.69,
+    "mood": "yes",
+    "energy": 0.5,
+    "seed": 1,
+    "sha256": "e6f917ae1723bcf2"
+   },
+   {
+    "file": "yes_2.wav",
+    "s": 0.68,
+    "mood": "yes",
+    "energy": 0.6,
+    "seed": 2,
+    "sha256": "0c56cb4f75900132"
+   },
+   {
+    "file": "yes_3.wav",
+    "s": 0.7,
+    "mood": "yes",
+    "energy": 0.55,
+    "seed": 3,
+    "sha256": "6a4338fad064fb33"
+   },
+   {
+    "file": "yes_4.wav",
+    "s": 0.69,
+    "mood": "yes",
+    "energy": 0.65,
+    "seed": 4,
+    "sha256": "03e6d50e0b06acc4"
+   }
+  ],
+  "no": [
+   {
+    "file": "no_1.wav",
+    "s": 0.77,
+    "mood": "no",
+    "energy": 0.5,
+    "seed": 1,
+    "sha256": "fecfe3299c81dab9"
+   },
+   {
+    "file": "no_2.wav",
+    "s": 0.75,
+    "mood": "no",
+    "energy": 0.6,
+    "seed": 2,
+    "sha256": "b1aebbdc2e93518c"
+   },
+   {
+    "file": "no_3.wav",
+    "s": 0.77,
+    "mood": "no",
+    "energy": 0.55,
+    "seed": 3,
+    "sha256": "f83645f88e7c4e03"
+   },
+   {
+    "file": "no_4.wav",
+    "s": 0.8,
+    "mood": "no",
+    "energy": 0.45,
+    "seed": 4,
+    "sha256": "471eaf172940eb12"
+   }
+  ],
+  "sad": [
+   {
+    "file": "sad_1.wav",
+    "s": 2.12,
+    "mood": "sad",
+    "energy": 0.4,
+    "seed": 1,
+    "sha256": "cb5838f05e66cc7b"
+   },
+   {
+    "file": "sad_2.wav",
+    "s": 1.51,
+    "mood": "sad",
+    "energy": 0.5,
+    "seed": 2,
+    "sha256": "094b6310a4139820"
+   },
+   {
+    "file": "sad_3.wav",
+    "s": 2.11,
+    "mood": "sad",
+    "energy": 0.45,
+    "seed": 3,
+    "sha256": "e759ff09a586fd3b"
+   }
+  ],
+  "worried": [
+   {
+    "file": "worried_1.wav",
+    "s": 1.39,
+    "mood": "worried",
+    "energy": 0.5,
+    "seed": 1,
+    "sha256": "82aad34a90ac103e"
+   },
+   {
+    "file": "worried_2.wav",
+    "s": 1.52,
+    "mood": "worried",
+    "energy": 0.6,
+    "seed": 2,
+    "sha256": "ecf05acd61409c54"
+   },
+   {
+    "file": "worried_3.wav",
+    "s": 1.43,
+    "mood": "worried",
+    "energy": 0.55,
+    "seed": 3,
+    "sha256": "d5560be21487b949"
+   },
+   {
+    "file": "worried_4.wav",
+    "s": 1.49,
+    "mood": "worried",
+    "energy": 0.65,
+    "seed": 4,
+    "sha256": "bf8855e328da2847"
+   }
+  ],
+  "amazed": [
+   {
+    "file": "amazed_1.wav",
+    "s": 1.85,
+    "mood": "amazed",
+    "energy": 0.5,
+    "seed": 1,
+    "sha256": "211435a1ea87a650"
+   },
+   {
+    "file": "amazed_2.wav",
+    "s": 1.73,
+    "mood": "amazed",
+    "energy": 0.6,
+    "seed": 2,
+    "sha256": "0c7f8c35e91d596b"
+   },
+   {
+    "file": "amazed_3.wav",
+    "s": 1.87,
+    "mood": "amazed",
+    "energy": 0.55,
+    "seed": 3,
+    "sha256": "038d1ae823b2fbd2"
+   },
+   {
+    "file": "amazed_4.wav",
+    "s": 1.81,
+    "mood": "amazed",
+    "energy": 0.65,
+    "seed": 4,
+    "sha256": "fd2c19df7670d9f5"
+   }
+  ],
+  "babble": [
+   {
+    "file": "babble_1.wav",
+    "s": 1.5,
+    "mood": "babble",
+    "energy": 0.5,
+    "seed": 1,
+    "sha256": "6365f8ae255ef87d"
+   },
+   {
+    "file": "babble_2.wav",
+    "s": 1.61,
+    "mood": "babble",
+    "energy": 0.6,
+    "seed": 2,
+    "sha256": "32ec464a3c28e768"
+   },
+   {
+    "file": "babble_3.wav",
+    "s": 1.71,
+    "mood": "babble",
+    "energy": 0.55,
+    "seed": 3,
+    "sha256": "b39aad8052e4db65"
+   },
+   {
+    "file": "babble_4.wav",
+    "s": 1.38,
+    "mood": "babble",
+    "energy": 0.65,
+    "seed": 4,
+    "sha256": "b03c9c9f18257cc4"
+   },
+   {
+    "file": "babble_5.wav",
+    "s": 1.33,
+    "mood": "babble",
+    "energy": 0.45,
+    "seed": 5,
+    "sha256": "3947c6234c6915c5"
+   }
+  ],
+  "scan": [
+   {
+    "file": "scan_1.wav",
+    "s": 2.71,
+    "mood": "scan",
+    "energy": 0.5,
+    "seed": 1,
+    "sha256": "051c6cbce189d392"
+   },
+   {
+    "file": "scan_2.wav",
+    "s": 2.7,
+    "mood": "scan",
+    "energy": 0.55,
+    "seed": 2,
+    "sha256": "965c704f117c4011"
+   },
+   {
+    "file": "scan_3.wav",
+    "s": 3.71,
+    "mood": "scan",
+    "energy": 0.45,
+    "seed": 3,
+    "sha256": "67624e72e3a259d6"
+   }
+  ],
+  "beatbox": [
+   {
+    "file": "beatbox_1.wav",
+    "s": 2.88,
+    "mood": "beatbox",
+    "energy": 0.55,
+    "seed": 1,
+    "sha256": "85e6655b7514ad36"
+   },
+   {
+    "file": "beatbox_2.wav",
+    "s": 3.27,
+    "mood": "beatbox",
+    "energy": 0.65,
+    "seed": 2,
+    "sha256": "c49e6ef4e4224be7"
+   },
+   {
+    "file": "beatbox_3.wav",
+    "s": 3.14,
+    "mood": "beatbox",
+    "energy": 0.6,
+    "seed": 3,
+    "sha256": "53c0303efef01e71"
+   }
+  ]
+ }
+}

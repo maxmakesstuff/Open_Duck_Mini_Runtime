@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Duck head preview</title>
+<style>
+:root{--bg:#14110d;--panel:#1d1913;--line:#3a3226;--ink:#f1e7d3;--dim:#9c8f78;--acc:#ffa62b}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 ui-monospace,Menlo,monospace}
+main{max-width:720px;margin:0 auto;padding:16px}
+h1{font-size:15px;letter-spacing:.14em;color:var(--acc);margin:4px 0 2px}
+p{color:var(--dim);margin:0 0 12px;font-size:12px}
+canvas{width:100%;height:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px;display:block}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0;align-items:center}
+button{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font:inherit;cursor:pointer;min-height:44px}
+button.on{border-color:var(--acc);color:var(--acc)}
+button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+label{display:flex;gap:8px;align-items:center;color:var(--dim);font-size:12px;flex:1 1 200px}
+input[type=range]{flex:1;accent-color:var(--acc)}
+#now{color:var(--acc);min-height:1.4em}
+#log{color:var(--dim);font-size:12px;min-height:3em;white-space:pre-line}
+</style></head><body><main>
+<h1>DUCK HEAD PREVIEW</h1>
+<p>The real animation engine and voice logic, running in real time on this computer. Front view: the duck looks at you. Sound needs one click anywhere on the page first.</p>
+<canvas id="c" width="720" height="460" aria-label="animated duck head"></canvas>
+<div id="now" role="status"></div>
+<div class="row">
+  <button id="look">Look around: OFF</button>
+  <button id="walk">Standing</button>
+  <button id="lead">Look where it goes: OFF</button>
+  <button id="left">◀ steer left</button><button id="right">steer right ▶</button>
+</div>
+<div class="row">
+  <label>Liveliness <input id="busy" type="range" min="0.3" max="2" step="0.1" value="1"><span id="busyv">1.0</span></label>
+  <label>Speed <input id="speed" type="range" min="0.4" max="1.6" step="0.1" value="1"><span id="speedv">1.0</span></label>
+  <label>Size <input id="look_scale" type="range" min="0.2" max="1.5" step="0.1" value="1"><span id="look_scalev">1.0</span></label>
+</div>
+<div id="log"></div>
+<p>The animation board and the voice buttons are in the normal page under TUNE → Animation (<a href="/" style="color:var(--acc)">open it</a> in a second window; both drive this preview).</p>
+</main>
+<script>
+const $=id=>document.getElementById(id), cv=$("c"), g=cv.getContext("2d");
+let walking=false, turn=0, st={head:[0,0,0,0],ears:[0,0],anim:""}, said=[];
+const post=(key,value,group="head")=>fetch("/api/setting",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({group,key,value})});
+function toggle(id,key,label){ const b=$(id); let on=false;
+  b.addEventListener("click",()=>{ on=!on; b.classList.toggle("on",on); b.textContent=label+": "+(on?"ON":"OFF"); post(key,on); }); }
+toggle("look","look","Look around"); toggle("lead","lead","Look where it goes");
+$("walk").addEventListener("click",()=>{ walking=!walking; $("walk").classList.toggle("on",walking); $("walk").textContent=walking?"Walking":"Standing"; });
+for(const [id,v] of [["left",1],["right",-1]]){ const b=$(id);
+  const down=()=>{turn=v;b.classList.add("on")}, up=()=>{turn=0;b.classList.remove("on")};
+  b.addEventListener("pointerdown",down); b.addEventListener("pointerup",up); b.addEventListener("pointerleave",up); }
+for(const k of ["busy","speed","look_scale"]){ $(k).addEventListener("input",()=>{ $(k+"v").textContent=(+$(k).value).toFixed(1); post(k,+$(k).value); }); }
+async function poll(){
+  try{ const r=await fetch(`/api/preview?walking=${walking?1:0}&turn=${turn}`); st=await r.json();
+    for(const name of st.said){ said.unshift(name); said=said.slice(0,4);
+      const a=new Audio("/voice/"+name); a.volume=st.volume; a.play().catch(()=>{}); } }catch(e){}
+  setTimeout(poll,33);
+}
+function draw(){
+  const [ ,pitch,yaw,roll]=st.head, [el,er]=st.ears, W=cv.width,H=cv.height;
+  g.clearRect(0,0,W,H);
+  g.save(); g.translate(W/2,H*0.60);
+  // body
+  g.fillStyle="#2a241b"; g.beginPath(); g.ellipse(0,150,150,90,0,0,7); g.fill();
+  g.rotate(-roll);                       // leaning left (roll +) = towards the viewer's right
+  const dx=-Math.sin(yaw)*95, dy=-Math.sin(pitch)*90;
+  // ears (antennas): perked = long and upright, laid back = short and splayed
+  for(const [side,e] of [[-1,er],[1,el]]){       // viewer's left = the duck's right ear
+    const len=62+38*e, ang=side*(0.32-0.26*e);
+    g.strokeStyle="#ffa62b"; g.lineWidth=7; g.lineCap="round"; g.beginPath();
+    g.moveTo(side*58+dx*0.25,-96+dy*0.3); g.lineTo(side*58+dx*0.25+Math.sin(ang)*len,-96+dy*0.3-Math.cos(ang)*len); g.stroke();
+    g.fillStyle="#ffa62b"; g.beginPath(); g.arc(side*58+dx*0.25+Math.sin(ang)*len,-96+dy*0.3-Math.cos(ang)*len,9,0,7); g.fill(); }
+  // head
+  g.fillStyle="#f1e7d3"; g.beginPath(); g.roundRect(-120,-110,240,190,46); g.fill();
+  // face: shifts with yaw and pitch, squeezes when turned
+  const sq=Math.cos(yaw);
+  g.fillStyle="#14110d";
+  for(const side of [-1,1]){ g.beginPath(); g.ellipse(dx+side*46*sq,-28+dy,13*sq+3,17,0,0,7); g.fill(); }
+  g.fillStyle="#ffa62b"; g.beginPath(); g.roundRect(dx-44*sq,6+dy,88*sq,30,12); g.fill();
+  g.restore();
+  $("now").textContent=(st.anim?st.anim.replace(/_/g," "):"(looking straight ahead)")+(st.body<1?"   · body waits for the head":"");
+  $("log").textContent=said.length?"said: "+said.join(", "):"";
+  requestAnimationFrame(draw);
+}
+poll(); draw();
+</script></body></html>

@@ -136,15 +136,50 @@ recordings:
     to the get-up later. Get-up stays in the build, off by default, marked
     experimental. Full write-up: `docs/STABILITY_SUITE.md`, "Get-up test results".
     Next: five unaided, filmed attempts on a charged battery.
-  - **Head life (2026-11-27):** `head_life.py` adds a slow random look-around as
-    offsets on `last_commands[4:7]` (head pitch, yaw, roll) BEFORE the observation is
-    built (`RLWalk._apply_head_life`), so the policy sees the head command; the
-    existing overlay then sends it to the head servos. Confirmed on the MAX duck: "pretty
-    nice", walk unaffected. Trained head ranges (Open_Duck_Playground `joystick.py`):
-    neck -0.34..1.1, pitch +-0.78, yaw +-1.5, roll +-0.5, drawn at random. Config key
-    `head_life`, settings group `head`, telemetry `head_life`. Never edit
-    `last_commands` in place: the pad hands the same array back on ticks without a
-    fresh sample.
+  - **Head life = context animations (rebuilt 2026-11-28, tested on the Mac only).**
+    `head_life.py`: 21 keyframed animations (`ANIMATIONS`: steps of move time, hold
+    time, head pitch/yaw/roll, two ear values; kind `look` or `react`; optional voice
+    category with a chance). Poses are reached along a smooth curve and then HELD, so
+    it reads as a bird looking, not as a scan. Scheduler: walking = a new animation
+    every 0.5 to 2 s from the whole library; standing = `look` kinds every 2.5 to 6 s
+    and a `react` only every 45 to 110 s. Output: offsets on `last_commands[4:7]`
+    (head pitch, yaw, roll; the neck is never touched) added BEFORE the observation is
+    built (`RLWalk._apply_head_life`), `ears` (added to the ear animator's output in
+    `_ears_with_animation`; a held trigger wins), `pop_voice()` (a sound category).
+    Hard caps whatever the settings: pitch 0.45, yaw 0.70, roll 0.40 rad; 4 / 5 / 4
+    rad/s (times `speed` above 1). Settings `look`, `look_scale`, `speed`, `busy`,
+    `ears`, `voice` (+ `lead`, `lead_s`); config key `head_life`, settings group
+    `head` (key `play` = run one animation by name), telemetry `head_life`.
+    Directions from the robot model: head_pitch + = up, head_yaw + = left, head_roll +
+    = lean left, neck_pitch + = head BACK. Ear sign (+ = perked) is an assumption.
+    The first, slow look-around was confirmed on the MAX duck ("pretty nice"); the
+    quick version and the head lean are NOT yet tried on hardware: how fast the head
+    may move before the walk suffers is unknown, `speed` is the knob.
+    Trained head ranges (Open_Duck_Playground `joystick.py`): neck -0.34..1.1, pitch
+    +-0.78, yaw +-1.5, roll +-0.5, drawn at random. Never edit `last_commands` in
+    place: the pad hands the same array back on ticks without a fresh sample.
+  - **Audio system (rebuilt 2026-11-28, tested on the Mac only).** `sounds.py`
+    (`Sounds`: effects by file name, voice by category, master volume, never raises;
+    mixer injectable for tests) + `duck_voice.py` (`DuckVoice`: picks a take not just
+    heard, no talking over itself, 3 s pause between ordinary utterances, `urgent`
+    cuts in; `load_manifest`). Library: `assets/voice/` = 55 WAVs (22.05 kHz mono) in
+    13 categories + `voice.json`, rendered by `tools/render_voice_library.py` from a
+    droid-voice checkout with fixed seeds. Only the synthesizer's moods built from
+    generic blocks are used; NOT the "exact" scores, and not the moods containing the
+    signature whistle or single-clip figures (whistle, trot, grumble, angry, bored,
+    cheer, play). Callers: hello at start, worried on a fall (beep as fallback),
+    happy after a get-up, animation voice events, B button (`play_random`, name goes
+    into a running recording), head puppet greeting / tracking chatter via
+    `play("say:<category>")`. Config `sound_volume`, settings group `sound`
+    (`volume`, `say`), telemetry `sound`.
+    **Live synthesis was rejected:** the synthesizer does about 140x real time on the
+    Mac (`cli.py --bench`), i.e. only a few times real time on a Pi Zero 2 W, in bursts
+    of a few hundred ms next to a walk loop that needs half of every 20 ms tick.
+    Estimated, not measured on the Pi. With the real mixer on the Mac (pygame 2.6.1,
+    dummy device): all clips load, 16.7 MB in memory, `say()` takes about 0.01 ms.
+    Loading 55 clips will lengthen the start on the Pi by a few seconds (not measured).
+  - **Preview on a computer:** `webui/mock_server.py` runs the real `HeadLife` and
+    `DuckVoice` in real time; `/preview` draws the head and ears and plays the clips.
   - **Sight lead** (`head_life` keys `lead`, `lead_s`): head yaw follows the turn and
     sidestep command (0.45 rad at full turn, 0.30 at full sidestep, threshold 15 % of
     the stick), and `HeadLife.body_scale` holds the turn/sidestep command at 0 for
@@ -161,10 +196,15 @@ recordings:
     visibly upset the walk; the one recorded walk at 10 deg fell after 8 s. The policy
     was trained with random head commands, never rhythmic ones. Needs a policy trained
     for it; do not retry on this one.
-  - With "Straight stance" resting, the policy is faded out, so the neck sits at the
-    stance angle 0, further back than the roughly 0.15 to 0.2 rad forward the walk
-    policy holds it at. That reads as "neck locked back" while the duck stands and
-    looks around; it comes forward the moment the policy wakes.
+  - **Open: "the neck is all the way back and will not come forward"** (user,
+    2026-11-27, standing with the first look-around on). My explanation at the time
+    (the straight rest pose puts the neck further back than the policy does) had the
+    direction wrong: in the robot model neck_pitch + is head BACK, the walk policy
+    holds the neck about +0.14 to +0.2 (back) while walking, and the rest pose puts it
+    at 0, i.e. further FORWARD. The recording I took afterwards showed the duck
+    resting with the neck at 0 and following its target, so it does not show the
+    moment the user saw. Not explained. Next time it happens: press MARK and read the
+    neck command, target and position from that recording.
   - **"Rest pose stopped working" was stick drift, not the get-up.** From about 21:40
     the idle commands were a constant (0.005, 0, 0.017) instead of exactly 0, so the
     duck counted as driven and `RestPose` never engaged. An Xbox pad takes the stick

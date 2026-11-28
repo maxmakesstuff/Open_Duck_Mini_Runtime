@@ -107,6 +107,8 @@ FILES=(
   "mini_bdx_runtime/mini_bdx_runtime/imu_sanity.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/rest_pose.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/head_life.py|mini_bdx_runtime/mini_bdx_runtime"
+  "mini_bdx_runtime/mini_bdx_runtime/duck_voice.py|mini_bdx_runtime/mini_bdx_runtime"
+  "mini_bdx_runtime/mini_bdx_runtime/sounds.py|mini_bdx_runtime/mini_bdx_runtime"
   "mini_bdx_runtime/mini_bdx_runtime/gamepad_pairing.py|mini_bdx_runtime/mini_bdx_runtime"
   # --- selectable policies (ONNX + description; see policies/README.md) ---
   "policies/README.md|policies"
@@ -121,6 +123,7 @@ FILES=(
   "mini_bdx_runtime/mini_bdx_runtime/webui/index.html|mini_bdx_runtime/mini_bdx_runtime/webui"
   "mini_bdx_runtime/mini_bdx_runtime/webui/offsets.html|mini_bdx_runtime/mini_bdx_runtime/webui"
   "mini_bdx_runtime/mini_bdx_runtime/webui/mock_server.py|mini_bdx_runtime/mini_bdx_runtime/webui"
+  "mini_bdx_runtime/mini_bdx_runtime/webui/preview.html|mini_bdx_runtime/mini_bdx_runtime/webui"
   # --- scanner sounds ---
   "mini_bdx_runtime/assets/scanner/lamp.wav|mini_bdx_runtime/assets/scanner"
   "mini_bdx_runtime/assets/scanner/lamp2.wav|mini_bdx_runtime/assets/scanner"
@@ -145,6 +148,11 @@ FILES=(
   "ops/pigpio/setup-pigpio.sh|ops/pigpio"
   "ops/pigpio/pigpiod-override.conf|ops/pigpio"
 )
+# --- the voice library: every take in assets/voice plus voice.json, the list the
+#     runtime reads (made by tools/render_voice_library.py) ---
+for f in "${LOCAL_ROOT}"/mini_bdx_runtime/assets/voice/*; do
+  [ -f "$f" ] && FILES+=("mini_bdx_runtime/assets/voice/$(basename "$f")|mini_bdx_runtime/assets/voice")
+done
 
 echo "================================================="
 echo " Overnight dev suite  ->  ${REMOTE_USER}@${REMOTE_HOST}"

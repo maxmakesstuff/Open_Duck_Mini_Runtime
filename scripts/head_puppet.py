@@ -199,9 +199,14 @@ def main():
     controller = XBoxController(CONTROL_HZ, only_head_control=True, web_bus=web_bus)
 
     sounds = (
-        Sounds(volume=1.0, sound_directory="../mini_bdx_runtime/assets/")
+        Sounds(volume=getattr(duck_config, "sound_volume", 1.0),
+               sound_directory="../mini_bdx_runtime/assets/")
         if duck_config.speaker else None
     )
+    # With the voice library on board the duck talks instead of beeping: the
+    # greeting says hello, the chatter while tracking a face is curious / happy talk.
+    has_voice = sounds is not None and sounds.voice.ok
+    greet_sound = "say:hello" if has_voice else None
     antennas = Antennas() if duck_config.antennas else None
     # Ear free-animation (idle wiggle when the ears aren't hand-controlled). Toggled
     # live from the Web UI; manual trigger input always overrides it.
@@ -242,6 +247,7 @@ def main():
     # Communicative chatter while steadily tracking a face (random sounds + ear
     # wiggles). Pool = curated droid sounds actually loaded on this robot.
     chatter_pool = (
+        ["say:curious", "say:happy", "say:babble", "say:yes"] if has_voice else
         [s for s in CHATTER_SOUNDS if sounds is not None and s in sounds.sounds]
     )
     chatter = TrackingChatter(sound_pool=chatter_pool)
@@ -354,7 +360,7 @@ def main():
     playback_armed = False
     warned_no_feature = False
     presence = FacePresence()
-    greet = GreetSequence()
+    greet = GreetSequence(cute_sound=greet_sound) if greet_sound else GreetSequence()
     tracking_armed = False
     last_face = None                   # last real (cx, cy, w, h) while a face is held
     servo_target = None                # de-windup: head target advanced once per camera frame
@@ -383,7 +389,7 @@ def main():
                 if face_cam is not None:
                     state = "TRACKING"
                     presence = FacePresence()
-                    greet = GreetSequence()
+                    greet = GreetSequence(cute_sound=greet_sound) if greet_sound else GreetSequence()
                     chatter.reset(now)
                     playback_idx = 0
                     tracking_armed = False
@@ -597,9 +603,9 @@ def main():
                 antennas.set_position_right(ant_right_val)
 
             frame_sound = None
-            if buttons.B.triggered and sounds is not None and sounds.ok and sounds.sounds:
-                frame_sound = random.choice(list(sounds.sounds.keys()))
-                sounds.play(frame_sound)
+            if buttons.B.triggered and sounds is not None and sounds.ok:
+                # the clip's own name is recorded, so playback repeats exactly it
+                frame_sound = sounds.play_random()
 
             if buttons.X.triggered and projector is not None:
                 projector.switch()

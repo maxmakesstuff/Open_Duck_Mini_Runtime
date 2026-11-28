@@ -12,11 +12,17 @@ the projector flag) so live-flag highlighting can be exercised too.
     python3 mock_server.py --port 9000
 """
 import argparse
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".."))
+import head_life as _head_life  # noqa: E402  (the real animation engine)
+import duck_voice as _duck_voice  # noqa: E402  (the real voice logic)
 import json
 import math
 import os
 import struct
 import sys
+import threading
 import time
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -31,6 +37,8 @@ import gamepad_pairing  # noqa: E402
 
 INDEX = os.path.join(HERE, "index.html")
 OFFSETS_PAGE = os.path.join(HERE, "offsets.html")
+PREVIEW_PAGE = os.path.join(HERE, "preview.html")
+VOICE_DIR = os.path.join(HERE, "..", "..", "assets", "voice")
 START = time.time()
 
 # mutable bits toggled by button POSTs so the UI's flag highlighting is testable
@@ -57,7 +65,52 @@ WALK = {"action_scale": 0.23, "action_scale_target": 0.23, "velocity_clip": True
 CAM = {"ae": True, "awb": True, "exposure": 10000, "gain": 1.0, "brightness": 0.0,
        "contrast": 1.0, "saturation": 1.0, "sharpness": 1.0}
 ANT = {"free_anim": True, "sync": False}
-HEAD = {"look": False, "look_scale": 1.0, "lead": False, "lead_s": 0.25}
+HEAD = {"look": False, "look_scale": 1.0, "speed": 1.0, "busy": 1.0, "ears": True, "voice": True,
+        "lead": False, "lead_s": 0.25}
+HEAD_NOW = {"anim": ""}
+
+
+class _Preview:
+    """The REAL animation engine and voice logic, run in real time for /preview: what
+    you see and hear there is what the duck would do with the same settings."""
+
+    def __init__(self):
+        self.engine = _head_life.HeadLife(HEAD)
+        self.said = []
+        self.voice = _duck_voice.DuckVoice(_duck_voice.load_manifest(VOICE_DIR), self.said.append)
+        self.t = None
+        self.lock = threading.Lock()
+
+    def step(self, walking, turn):
+        with self.lock:
+            now = time.time()
+            if self.t is None or now - self.t > 0.5:
+                self.t = now - 0.02
+            self.engine.set(HEAD)
+            while self.t < now:
+                self.t += 0.02
+                self.engine.update(self.t, 0.02, walking=walking, turn=turn)
+                v = self.engine.pop_voice()
+                if v:
+                    self.voice.say(v, self.t)
+            said, self.said[:] = list(self.said), []
+            HEAD_NOW["anim"] = self.engine.anim
+            return {"head": self.engine.out, "ears": self.engine.ears, "anim": self.engine.anim,
+                    "body": self.engine.body_scale, "said": said, "volume": SOUND["volume"]}
+
+    def play(self, name):
+        with self.lock:
+            self.engine.play(name)
+
+    def say(self, category):
+        with self.lock:
+            self.voice.say(category, time.time(), urgent=True)
+
+
+PREVIEW = _Preview()
+SOUND = {"ok": True, "volume": 1.0, "voice": True, "talk": True, "last": "",
+         "categories": ["amazed", "babble", "beatbox", "curious", "excited", "happy", "hello",
+                        "no", "notice", "sad", "scan", "worried", "yes"]}
 
 # ---- stability suite mocks (policy slots, soft landing, get-up, recorder, health) ----
 SLOTS = [
@@ -254,7 +307,9 @@ def build_state():
             "governor": dict(WALK["governor"]),
         },
         "camera": {"available": True, "controls": dict(CAM)},
-        "head_life": dict(HEAD, active=bool(HEAD["look"] or HEAD["lead"])),
+        "head_life": dict(HEAD, active=bool(HEAD["look"] or HEAD["lead"]), anim=HEAD_NOW["anim"],
+                          animations=sorted(_head_life.ANIMATIONS)),
+        "sound": dict(SOUND),
         "antenna_anim": ANT["free_anim"],
         "antenna_sync": ANT["sync"],
         "sounds": ["beep1.wav", "happy1.wav", "sad1.wav", "quack.wav"],
@@ -425,8 +480,16 @@ def handle_setting(body):
             WALK[key] = val
     elif group == "camera" and key in CAM:
         CAM[key] = val
+    elif group == "head" and key == "play":
+        HEAD_NOW["anim"] = str(val)
+        PREVIEW.play(str(val))
     elif group == "head" and key in HEAD:
         HEAD[key] = val
+    elif group == "sound" and key == "volume":
+        SOUND["volume"] = max(0.0, min(1.0, float(val)))
+    elif group == "sound" and key == "say":
+        SOUND["last"] = str(val)
+        PREVIEW.say(str(val))
     elif group == "antenna" and key in ANT:
         ANT[key] = bool(val)
     elif group == "stance" and key == "hold" and val:
@@ -523,6 +586,25 @@ class Handler(BaseHTTPRequestHandler):
         elif path in ("/offsets", "/offsets.html"):
             with open(OFFSETS_PAGE, "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
+        elif path == "/preview":
+            with open(PREVIEW_PAGE, "rb") as f:
+                self._send(200, f.read(), "text/html; charset=utf-8")
+        elif path == "/api/preview":
+            q = self.path.split("?", 1)[1] if "?" in self.path else ""
+            args = dict(kv.split("=", 1) for kv in q.split("&") if "=" in kv)
+            try:
+                turn = max(-1.0, min(1.0, float(args.get("turn", 0))))
+            except ValueError:
+                turn = 0.0
+            self._send(200, json.dumps(PREVIEW.step(args.get("walking") == "1", turn)))
+        elif path.startswith("/voice/"):
+            name = os.path.basename(path)
+            full = os.path.join(VOICE_DIR, name)
+            if name.endswith(".wav") and os.path.isfile(full):
+                with open(full, "rb") as f:
+                    self._send(200, f.read(), "audio/wav")
+            else:
+                self._send(404, json.dumps({"error": "not found"}))
         elif path == "/api/state":
             self._send(200, json.dumps(build_state()))
         elif path == "/api/logs":
